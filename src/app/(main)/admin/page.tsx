@@ -6,33 +6,38 @@ import Link from "next/link";
 const adminSections = [
   {
     title: "ツール管理",
-    description: "ツールの追加・編集・削除",
+    description: "ツールの追加・編集・アーカイブ",
     icon: Wrench,
     href: "/admin/tools",
+    implemented: true,
   },
   {
     title: "カテゴリ管理",
     description: "カテゴリの追加・編集・順序変更",
     icon: FolderTree,
     href: "/admin/categories",
+    implemented: true,
   },
   {
     title: "ユーザー管理",
     description: "ユーザー権限の管理",
     icon: Users,
     href: "/admin/users",
+    implemented: false,
   },
   {
     title: "お知らせ管理",
     description: "お知らせの作成・編集",
     icon: Bell,
     href: "/admin/announcements",
+    implemented: false,
   },
   {
     title: "障害管理",
     description: "障害情報の作成・更新",
     icon: AlertTriangle,
     href: "/admin/incidents",
+    implemented: false,
   },
 ];
 
@@ -45,37 +50,40 @@ export default function AdminPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {adminSections.map((section) => (
-          <Card key={section.href} className="hover:shadow-md transition-shadow">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
-                  <section.icon className="w-5 h-5 text-muted-foreground" />
+        {adminSections.map((section) => {
+          const cardClass = section.implemented
+            ? "hover:shadow-md transition-shadow"
+            : "hover:shadow-md transition-shadow opacity-60";
+          return (
+            <Card key={section.href} className={cardClass}>
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
+                    <section.icon className="w-5 h-5 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base">{section.title}</CardTitle>
+                    <CardDescription>{section.description}</CardDescription>
+                  </div>
                 </div>
-                <div>
-                  <CardTitle className="text-base">{section.title}</CardTitle>
-                  <CardDescription>{section.description}</CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <Link href={section.href}>
-                <Button variant="outline" className="w-full">
-                  管理画面へ
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
-        ))}
+              </CardHeader>
+              <CardContent>
+                {section.implemented ? (
+                  <Link href={section.href}>
+                    <Button variant="outline" className="w-full">
+                      管理画面へ
+                    </Button>
+                  </Link>
+                ) : (
+                  <Button variant="outline" className="w-full" disabled>
+                    準備中
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
-
-      <Card className="bg-muted/50">
-        <CardContent className="py-4">
-          <p className="text-sm text-muted-foreground">
-            各管理機能は今後実装されます。現在はUI枠のみです。
-          </p>
-        </CardContent>
-      </Card>
     </div>
   );
 }

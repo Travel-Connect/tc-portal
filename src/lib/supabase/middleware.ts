@@ -55,10 +55,24 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Admin guard
+  // Admin guard - check both profiles.role and TC_PORTAL_ADMIN_EMAILS
   if (user && request.nextUrl.pathname.startsWith("/admin")) {
-    const adminEmails = process.env.TC_PORTAL_ADMIN_EMAILS?.split(",") || [];
-    if (!adminEmails.includes(user.email || "")) {
+    // Check env allowlist first (lockout prevention)
+    const adminEmails = process.env.TC_PORTAL_ADMIN_EMAILS?.split(",").map(e => e.trim()) || [];
+    const isEnvAdmin = adminEmails.includes(user.email || "");
+
+    // Check profiles.role
+    let isDbAdmin = false;
+    if (!isEnvAdmin) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single();
+      isDbAdmin = profile?.role === "admin";
+    }
+
+    if (!isEnvAdmin && !isDbAdmin) {
       const url = request.nextUrl.clone();
       url.pathname = "/403";
       return NextResponse.redirect(url);

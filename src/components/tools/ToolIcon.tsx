@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 import { icons, type LucideIcon } from "lucide-react";
 import { Folder } from "lucide-react";
 import type { Tool } from "@/types/database";
@@ -9,8 +10,13 @@ interface ToolIconProps {
 
 export function ToolIcon({ tool, className = "w-6 h-6" }: ToolIconProps) {
   if (tool.icon_mode === "upload" && tool.icon_path) {
-    // TODO: Handle uploaded images
-    return <Folder className={className} />;
+    return (
+      <img
+        src={tool.icon_path}
+        alt=""
+        className={`${className} object-contain rounded`}
+      />
+    );
   }
 
   if (tool.icon_mode === "lucide" && tool.icon_key) {

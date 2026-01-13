@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/layout";
+import { isCurrentUserAdmin } from "@/lib/queries/admin";
 
 export default async function MainLayout({
   children,
@@ -8,9 +9,7 @@ export default async function MainLayout({
 }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-
-  const adminEmails = process.env.TC_PORTAL_ADMIN_EMAILS?.split(",") || [];
-  const isAdmin = adminEmails.includes(user?.email || "");
+  const isAdmin = await isCurrentUserAdmin();
 
   return (
     <AppShell userEmail={user?.email} isAdmin={isAdmin}>
