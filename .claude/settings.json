@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(cat .env*)",
+      "Bash(echo $*KEY*)",
+      "Bash(echo $*SECRET*)",
+      "Read(.env)",
+      "Read(.env.local)"
+    ],
+    "allow": [
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(npm run dev*)",
+      "Bash(npm run lint*)",
+      "Bash(npm run build*)",
+      "Bash(npx tsc*)"
+    ],
+    "ask": [
+      "Bash(git commit*)",
+      "Bash(git push*)",
+      "Bash(git checkout*)",
+      "Bash(git reset*)"
+    ]
+  }
+}
