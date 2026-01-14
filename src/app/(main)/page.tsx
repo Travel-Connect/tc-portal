@@ -1,6 +1,6 @@
-import { Bell, Pin, Star, Grid3X3, Folder } from "lucide-react";
+import { Bell, Pin, Star, Grid3X3 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ToolTile } from "@/components/tools";
+import { ToolTile, AllToolsSection } from "@/components/tools";
 import { createClient } from "@/lib/supabase/server";
 import { getCategories } from "@/lib/queries/categories";
 import { getToolsWithUserOrder } from "@/lib/queries/tools";
@@ -50,13 +50,8 @@ export default async function HomePage() {
     user ? getFavoriteTools(user.id) : Promise.resolve([]),
   ]);
 
-  // Group tools by category
-  const toolsByCategory = categories.reduce((acc, category) => {
-    acc[category.id] = allTools
-      .filter((t) => t.category_id === category.id)
-      .map((t) => ({ ...t, categories: undefined } as Tool));
-    return acc;
-  }, {} as Record<string, Tool[]>);
+  // Convert to Tool[] (remove categories relation)
+  const toolsForSection = allTools.map((t) => ({ ...t, categories: undefined } as Tool));
 
   return (
     <div className="space-y-8">
@@ -114,32 +109,7 @@ export default async function HomePage() {
       </section>
 
       {/* 全ツールセクション */}
-      <section>
-        <SectionHeader icon={<Folder className="w-5 h-5" />} title="全ツール" />
-        <div className="space-y-6">
-          {categories.map((category) => {
-            const categoryTools = toolsByCategory[category.id] || [];
-            return (
-              <div key={category.id}>
-                <h3 className="text-md font-medium text-muted-foreground mb-3 border-b pb-2">
-                  {category.name}
-                </h3>
-                {categoryTools.length > 0 ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
-                    {categoryTools.map((tool) => (
-                      <ToolTile key={tool.id} tool={tool} />
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground py-2">
-                    このカテゴリにはツールがありません
-                  </p>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </section>
+      <AllToolsSection tools={toolsForSection} categories={categories} />
     </div>
   );
 }
