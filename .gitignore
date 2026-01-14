@@ -42,3 +42,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 tmpclaude-*
+
+# E2E tests
+e2e/.venv/
+e2e/__pycache__/
+e2e/.pytest_cache/
