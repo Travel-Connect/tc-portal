@@ -59,8 +59,8 @@ export interface Pin {
 export interface ToolOrder {
   user_id: string;
   tool_id: string;
-  context: "home" | "tools";
   sort_index: number;
+  updated_at: string;
 }
 
 // Extended types with relations
