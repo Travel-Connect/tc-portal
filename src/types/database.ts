@@ -15,6 +15,23 @@ export type IconMode = "lucide" | "upload";
 
 export type UserRole = "admin" | "member";
 
+export type ExecutionMode = "open" | "queue";
+
+export type RunStatus = "queued" | "running" | "success" | "failed" | "canceled";
+
+// run_config の型定義
+export interface PythonRunnerConfig {
+  script?: string;
+  args?: string[];
+}
+
+export interface PadRunConfig {
+  flow_name?: string;
+  command?: string;
+}
+
+export type RunConfig = PythonRunnerConfig | PadRunConfig;
+
 export interface Profile {
   id: string;
   email: string;
@@ -40,6 +57,8 @@ export interface Tool {
   icon_key: string | null;
   icon_path: string | null;
   is_archived: boolean;
+  execution_mode: ExecutionMode;
+  run_config: RunConfig | null;
   created_at: string;
   updated_at: string;
 }
@@ -63,9 +82,40 @@ export interface ToolOrder {
   updated_at: string;
 }
 
+export interface Machine {
+  id: string;
+  name: string;
+  key_hash: string;
+  enabled: boolean;
+  last_seen_at: string | null;
+  created_at: string;
+}
+
+export interface Run {
+  id: string;
+  tool_id: string;
+  requested_by: string;
+  requested_at: string;
+  status: RunStatus;
+  started_at: string | null;
+  finished_at: string | null;
+  summary: string | null;
+  error_message: string | null;
+  log_path: string | null;
+  log_url: string | null;
+  machine_id: string | null;
+  run_token_hash: string;
+  payload: Record<string, unknown> | null;
+}
+
 // Extended types with relations
 export interface ToolWithCategory extends Tool {
   category?: Category;
+}
+
+export interface RunWithDetails extends Run {
+  tools?: Tool;
+  profiles?: Profile;
 }
 
 // Tool type labels for display
