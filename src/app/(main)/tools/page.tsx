@@ -1,7 +1,7 @@
 import { ToolsFilter } from "@/components/tools";
 import { createClient } from "@/lib/supabase/server";
 import { getCategories } from "@/lib/queries/categories";
-import { getTools } from "@/lib/queries/tools";
+import { getToolsWithUserOrder } from "@/lib/queries/tools";
 import { getFavoriteToolIds } from "@/lib/queries/favorites";
 import { getPinnedToolIds } from "@/lib/queries/pins";
 
@@ -19,7 +19,7 @@ export default async function ToolsPage({ searchParams }: ToolsPageProps) {
   // Fetch all data in parallel
   const [categories, tools, favoriteIds, pinnedIds] = await Promise.all([
     getCategories(),
-    getTools(),
+    getToolsWithUserOrder(),
     user ? getFavoriteToolIds(user.id) : Promise.resolve([]),
     user ? getPinnedToolIds(user.id) : Promise.resolve([]),
   ]);

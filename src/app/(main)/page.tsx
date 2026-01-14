@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ToolTile } from "@/components/tools";
 import { createClient } from "@/lib/supabase/server";
 import { getCategories } from "@/lib/queries/categories";
-import { getTools } from "@/lib/queries/tools";
+import { getToolsWithUserOrder } from "@/lib/queries/tools";
 import { getFavoriteTools } from "@/lib/queries/favorites";
 import { getPinnedTools } from "@/lib/queries/pins";
 import type { Tool, Category } from "@/types/database";
@@ -45,7 +45,7 @@ export default async function HomePage() {
   // Fetch all data in parallel
   const [categories, allTools, pinnedTools, favoriteTools] = await Promise.all([
     getCategories(),
-    getTools(),
+    getToolsWithUserOrder(),
     user ? getPinnedTools(user.id) : Promise.resolve([]),
     user ? getFavoriteTools(user.id) : Promise.resolve([]),
   ]);
