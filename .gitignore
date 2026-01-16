@@ -43,10 +43,15 @@ yarn-error.log*
 next-env.d.ts
 tmpclaude-*
 
-# E2E tests
+# E2E tests (Python - legacy)
 e2e/.venv/
 e2e/__pycache__/
 e2e/.pytest_cache/
+
+# Playwright E2E
+/playwright-report/
+/test-results/
+/tests/e2e/.auth/
 
 # Runner
 runner/config.json
