@@ -2,8 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { isCurrentUserAdmin } from "@/lib/queries/admin";
-import type { ToolType, IconMode } from "@/types/database";
+import type { ToolType, IconMode, RunConfig } from "@/types/database";
 
 export interface ToolFormData {
   name: string;
@@ -15,16 +14,19 @@ export interface ToolFormData {
   icon_key?: string;
   icon_path?: string;
   is_archived?: boolean;
+  run_config?: RunConfig | null;
+  tags?: string[];
 }
 
 export async function createTool(data: ToolFormData) {
-  const isAdmin = await isCurrentUserAdmin();
-  if (!isAdmin) {
-    return { success: false, error: "権限がありません" };
-  }
-
   const supabase = await createClient();
-  const { error } = await supabase
+
+  // 認証チェック
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "認証が必要です" };
+  }
+  const { data: newTool, error } = await supabase
     .from("tools")
     .insert({
       name: data.name,
@@ -36,7 +38,11 @@ export async function createTool(data: ToolFormData) {
       icon_key: data.icon_key || null,
       icon_path: data.icon_path || null,
       is_archived: data.is_archived || false,
-    });
+      run_config: data.run_config || null,
+      tags: data.tags || [],
+    })
+    .select("id")
+    .single();
 
   if (error) {
     console.error("Error creating tool:", error);
@@ -46,25 +52,40 @@ export async function createTool(data: ToolFormData) {
   revalidatePath("/");
   revalidatePath("/tools");
   revalidatePath("/admin/tools");
-  return { success: true };
+  return { success: true, id: newTool.id };
 }
 
 export async function updateTool(id: string, data: Partial<ToolFormData>) {
-  const isAdmin = await isCurrentUserAdmin();
-  if (!isAdmin) {
-    return { success: false, error: "権限がありません" };
+  const supabase = await createClient();
+
+  // 認証チェック
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "認証が必要です" };
   }
 
-  const supabase = await createClient();
+  // run_config が undefined の場合は更新しない
+  const updateData: Record<string, unknown> = {
+    ...data,
+    description: data.description || null,
+    target: data.target || null,
+    icon_key: data.icon_key || null,
+    icon_path: data.icon_path || null,
+  };
+
+  // run_config が明示的に渡された場合のみ更新
+  if (data.run_config !== undefined) {
+    updateData.run_config = data.run_config;
+  }
+
+  // tags が明示的に渡された場合のみ更新
+  if (data.tags !== undefined) {
+    updateData.tags = data.tags;
+  }
+
   const { error } = await supabase
     .from("tools")
-    .update({
-      ...data,
-      description: data.description || null,
-      target: data.target || null,
-      icon_key: data.icon_key || null,
-      icon_path: data.icon_path || null,
-    })
+    .update(updateData)
     .eq("id", id);
 
   if (error) {
@@ -80,12 +101,13 @@ export async function updateTool(id: string, data: Partial<ToolFormData>) {
 }
 
 export async function archiveTool(id: string, archived: boolean) {
-  const isAdmin = await isCurrentUserAdmin();
-  if (!isAdmin) {
-    return { success: false, error: "権限がありません" };
-  }
-
   const supabase = await createClient();
+
+  // 認証チェック
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "認証が必要です" };
+  }
   const { error } = await supabase
     .from("tools")
     .update({ is_archived: archived })
@@ -102,40 +124,57 @@ export async function archiveTool(id: string, archived: boolean) {
   return { success: true };
 }
 
+// Allowed icon file types
+const ALLOWED_ICON_TYPES = ["image/png", "image/jpeg", "image/webp"];
+const MAX_ICON_SIZE = 2 * 1024 * 1024; // 2MB
+
 export async function uploadToolIcon(toolId: string, file: File) {
-  const isAdmin = await isCurrentUserAdmin();
-  if (!isAdmin) {
-    return { success: false, error: "権限がありません" };
+  // Validate file type
+  if (!ALLOWED_ICON_TYPES.includes(file.type)) {
+    return {
+      success: false,
+      error: "対応していないファイル形式です。PNG, JPEG, WebPのみ対応しています。",
+    };
+  }
+
+  // Validate file size
+  if (file.size > MAX_ICON_SIZE) {
+    return {
+      success: false,
+      error: "ファイルサイズが大きすぎます。2MB以下にしてください。",
+    };
   }
 
   const supabase = await createClient();
 
-  // Generate unique filename
-  const ext = file.name.split(".").pop();
-  const filename = `${toolId}.${ext}`;
-  const path = `icons/${filename}`;
+  // Get current user for authentication
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "認証が必要です" };
+  }
+
+  // Generate unique filename with timestamp to avoid cache issues
+  const ext = file.name.split(".").pop()?.toLowerCase() || "png";
+  const timestamp = Date.now();
+  const filename = `${toolId}_${timestamp}.${ext}`;
+  const storagePath = `icons/${filename}`;
 
   // Upload to storage
   const { error: uploadError } = await supabase.storage
     .from("tool-icons")
-    .upload(path, file, { upsert: true });
+    .upload(storagePath, file, { upsert: true });
 
   if (uploadError) {
     console.error("Error uploading icon:", uploadError);
-    return { success: false, error: uploadError.message };
+    return { success: false, error: `アップロードエラー: ${uploadError.message}` };
   }
 
-  // Get public URL
-  const { data: { publicUrl } } = supabase.storage
-    .from("tool-icons")
-    .getPublicUrl(path);
-
-  // Update tool with icon path
+  // Update tool with icon path (store path, not full URL)
   const { error: updateError } = await supabase
     .from("tools")
     .update({
       icon_mode: "upload",
-      icon_path: publicUrl,
+      icon_path: storagePath,
       icon_key: null,
     })
     .eq("id", toolId);
@@ -149,5 +188,5 @@ export async function uploadToolIcon(toolId: string, file: File) {
   revalidatePath("/tools");
   revalidatePath("/admin/tools");
   revalidatePath(`/tools/${toolId}`);
-  return { success: true, iconPath: publicUrl };
+  return { success: true, iconPath: storagePath };
 }

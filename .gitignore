@@ -47,3 +47,15 @@ tmpclaude-*
 e2e/.venv/
 e2e/__pycache__/
 e2e/.pytest_cache/
+
+# Runner
+runner/config.json
+runner/.venv/
+runner/__pycache__/
+
+# Helper
+helper/config.json
+helper/.venv/
+helper/__pycache__/
+helper/build/
+helper/dist/

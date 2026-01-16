@@ -1,0 +1,10 @@
+{
+  "portal_url": "https://your-portal-url.vercel.app",
+  "machine_key": "your-machine-key-here",
+  "poll_interval_sec": 10,
+  "execution_timeout": 3600,
+  "python_exe": "python",
+  "scripts_base_path": "C:\\Scripts",
+  "pad_exe": "C:\\Program Files (x86)\\Power Automate Desktop\\PAD.Console.Host.exe",
+  "log_dir": "C:\\TcPortalLogs"
+}

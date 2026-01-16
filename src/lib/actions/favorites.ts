@@ -3,56 +3,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
-export async function toggleFavorite(toolId: string): Promise<{ success: boolean; isFavorite: boolean }> {
-  const supabase = await createClient();
-
-  // Get current user
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return { success: false, isFavorite: false };
-  }
-
-  // Check if already favorited
-  const { data: existing } = await supabase
-    .from("favorites")
-    .select("tool_id")
-    .eq("user_id", user.id)
-    .eq("tool_id", toolId)
-    .single();
-
-  if (existing) {
-    // Remove favorite
-    const { error } = await supabase
-      .from("favorites")
-      .delete()
-      .eq("user_id", user.id)
-      .eq("tool_id", toolId);
-
-    if (error) {
-      console.error("Error removing favorite:", error);
-      return { success: false, isFavorite: true };
-    }
-
-    revalidatePath("/");
-    revalidatePath("/tools");
-    return { success: true, isFavorite: false };
-  } else {
-    // Add favorite
-    const { error } = await supabase
-      .from("favorites")
-      .insert({ user_id: user.id, tool_id: toolId });
-
-    if (error) {
-      console.error("Error adding favorite:", error);
-      return { success: false, isFavorite: false };
-    }
-
-    revalidatePath("/");
-    revalidatePath("/tools");
-    return { success: true, isFavorite: true };
-  }
-}
-
 export async function togglePin(toolId: string): Promise<{ success: boolean; isPinned: boolean }> {
   const supabase = await createClient();
 
@@ -87,10 +37,21 @@ export async function togglePin(toolId: string): Promise<{ success: boolean; isP
     revalidatePath("/tools");
     return { success: true, isPinned: false };
   } else {
-    // Add pin
+    // Get max sort_order for new pin
+    const { data: maxOrderData } = await supabase
+      .from("pins")
+      .select("sort_order")
+      .eq("user_id", user.id)
+      .order("sort_order", { ascending: false })
+      .limit(1)
+      .single();
+
+    const newSortOrder = (maxOrderData?.sort_order ?? -1) + 1;
+
+    // Add pin with sort_order
     const { error } = await supabase
       .from("pins")
-      .insert({ user_id: user.id, tool_id: toolId });
+      .insert({ user_id: user.id, tool_id: toolId, sort_order: newSortOrder });
 
     if (error) {
       console.error("Error adding pin:", error);
@@ -101,4 +62,38 @@ export async function togglePin(toolId: string): Promise<{ success: boolean; isP
     revalidatePath("/tools");
     return { success: true, isPinned: true };
   }
+}
+
+interface PinOrder {
+  tool_id: string;
+  sort_order: number;
+}
+
+export async function savePinOrders(
+  orders: PinOrder[]
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+
+  // Get current user
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "認証が必要です" };
+  }
+
+  // Update each pin's sort_order
+  for (const order of orders) {
+    const { error } = await supabase
+      .from("pins")
+      .update({ sort_order: order.sort_order })
+      .eq("user_id", user.id)
+      .eq("tool_id", order.tool_id);
+
+    if (error) {
+      console.error("Error updating pin order:", error);
+      return { success: false, error: `並び順の保存に失敗しました: ${error.message}` };
+    }
+  }
+
+  revalidatePath("/");
+  return { success: true };
 }

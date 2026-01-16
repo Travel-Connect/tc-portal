@@ -1,0 +1,3 @@
+# TC Portal Windows Helper dependencies
+pyinstaller>=6.0.0
+pywin32>=306

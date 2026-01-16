@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Project-specific ignores:
+    "e2e/.venv/**",
+    "helper/**",
+    "runner/**",
+    "scripts/**",
   ]),
 ]);
 

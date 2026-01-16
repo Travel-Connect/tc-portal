@@ -25,7 +25,7 @@ const navItems: NavItem[] = [
   { href: "/runs", label: "実行履歴", icon: <History className="w-5 h-5" /> },
   { href: "/announcements", label: "お知らせ", icon: <Bell className="w-5 h-5" /> },
   { href: "/incidents", label: "障害", icon: <AlertTriangle className="w-5 h-5" /> },
-  { href: "/admin", label: "管理", icon: <Settings className="w-5 h-5" />, adminOnly: true },
+  { href: "/admin", label: "管理", icon: <Settings className="w-5 h-5" /> },
 ];
 
 interface SidebarProps {

@@ -9,7 +9,6 @@ import type { Tool, Category } from "@/types/database";
 interface SortableToolCardProps {
   tool: Tool & { categories: Category | null };
   category: Category | null;
-  isFavorite: boolean;
   isPinned: boolean;
   editMode: boolean;
 }
@@ -17,7 +16,6 @@ interface SortableToolCardProps {
 export function SortableToolCard({
   tool,
   category,
-  isFavorite,
   isPinned,
   editMode,
 }: SortableToolCardProps) {
@@ -49,7 +47,6 @@ export function SortableToolCard({
         <ToolCard
           tool={tool}
           category={category}
-          isFavorite={isFavorite}
           isPinned={isPinned}
           disableLink
         />
@@ -61,7 +58,6 @@ export function SortableToolCard({
     <ToolCard
       tool={tool}
       category={category}
-      isFavorite={isFavorite}
       isPinned={isPinned}
     />
   );

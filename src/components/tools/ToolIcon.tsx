@@ -1,7 +1,11 @@
 /* eslint-disable @next/next/no-img-element */
+"use client";
+
+import { useState } from "react";
 import { icons, type LucideIcon } from "lucide-react";
 import { Folder } from "lucide-react";
 import type { Tool } from "@/types/database";
+import { getToolIconUrl } from "@/lib/supabase/storage";
 
 interface ToolIconProps {
   tool: Pick<Tool, "icon_mode" | "icon_key" | "icon_path">;
@@ -9,12 +13,16 @@ interface ToolIconProps {
 }
 
 export function ToolIcon({ tool, className = "w-6 h-6" }: ToolIconProps) {
-  if (tool.icon_mode === "upload" && tool.icon_path) {
+  const [imageError, setImageError] = useState(false);
+
+  if (tool.icon_mode === "upload" && tool.icon_path && !imageError) {
+    const imageUrl = getToolIconUrl(tool.icon_path);
     return (
       <img
-        src={tool.icon_path}
+        src={imageUrl}
         alt=""
         className={`${className} object-contain rounded`}
+        onError={() => setImageError(true)}
       />
     );
   }

@@ -70,6 +70,7 @@ export function AllToolsSection({ tools: initialTools, categories }: AllToolsSec
   const [tools, setTools] = useState(initialTools);
   const [isPending, startTransition] = useTransition();
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -89,6 +90,7 @@ export function AllToolsSection({ tools: initialTools, categories }: AllToolsSec
 
   const handleSave = () => {
     setSaveStatus("saving");
+    setErrorMessage(null);
     const orders = tools.map((tool, index) => ({ tool_id: tool.id, sort_index: index }));
     startTransition(async () => {
       const result = await saveToolOrders(orders);
@@ -97,8 +99,13 @@ export function AllToolsSection({ tools: initialTools, categories }: AllToolsSec
         setTimeout(() => setSaveStatus("idle"), 2000);
         router.refresh();
       } else {
+        console.error("Save failed:", result.error);
+        setErrorMessage(result.error || "保存に失敗しました");
         setSaveStatus("error");
-        setTimeout(() => setSaveStatus("idle"), 3000);
+        setTimeout(() => {
+          setSaveStatus("idle");
+          setErrorMessage(null);
+        }, 5000);
       }
     });
   };
@@ -130,8 +137,13 @@ export function AllToolsSection({ tools: initialTools, categories }: AllToolsSec
             </span>
           )}
           {saveStatus === "error" && (
-            <span className="text-xs text-red-600 flex items-center gap-1">
+            <span className="text-xs text-red-600 flex items-center gap-1" title={errorMessage || undefined}>
               <AlertCircle className="w-3 h-3" />保存失敗
+            </span>
+          )}
+          {errorMessage && (
+            <span className="text-xs text-red-500 max-w-xs truncate" title={errorMessage}>
+              {errorMessage}
             </span>
           )}
           <button

@@ -4,3 +4,6 @@ export { ToolCard } from "./ToolCard";
 export { ToolsFilter } from "./ToolsFilter";
 export { SortableToolCard } from "./SortableToolCard";
 export { AllToolsSection } from "./AllToolsSection";
+export { ExecuteConfirmDialog } from "./ExecuteConfirmDialog";
+export { HelperGuideBanner } from "./HelperGuideBanner";
+export { PinnedToolsSection } from "./PinnedToolsSection";

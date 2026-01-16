@@ -9,13 +9,15 @@ export type ToolType =
   | "python_runner"
   | "pad"
   | "folder_set"
-  | "shortcut";
+  | "folder"
+  | "shortcut"
+  | "bat";
 
 export type IconMode = "lucide" | "upload";
 
 export type UserRole = "admin" | "member";
 
-export type ExecutionMode = "open" | "queue";
+export type ExecutionMode = "open" | "queue" | "helper";
 
 export type RunStatus = "queued" | "running" | "success" | "failed" | "canceled";
 
@@ -30,7 +32,11 @@ export interface PadRunConfig {
   command?: string;
 }
 
-export type RunConfig = PythonRunnerConfig | PadRunConfig;
+export interface FolderSetConfig {
+  paths: string[];
+}
+
+export type RunConfig = PythonRunnerConfig | PadRunConfig | FolderSetConfig;
 
 export interface Profile {
   id: string;
@@ -59,6 +65,7 @@ export interface Tool {
   is_archived: boolean;
   execution_mode: ExecutionMode;
   run_config: RunConfig | null;
+  tags: string[];
   created_at: string;
   updated_at: string;
 }
@@ -128,7 +135,9 @@ export const TOOL_TYPE_LABELS: Record<ToolType, string> = {
   python_runner: "Python",
   pad: "PAD",
   folder_set: "Folder",
+  folder: "Folder",
   shortcut: "Shortcut",
+  bat: "BAT",
 };
 
 // Tool type badge colors
@@ -141,7 +150,9 @@ export const TOOL_TYPE_VARIANTS: Record<ToolType, "default" | "secondary" | "out
   python_runner: "default",
   pad: "secondary",
   folder_set: "outline",
+  folder: "outline",
   shortcut: "outline",
+  bat: "outline",
 };
 
 // Tool type options for forms
@@ -153,6 +164,8 @@ export const TOOL_TYPE_OPTIONS: { value: ToolType; label: string }[] = [
   { value: "exe", label: "EXE (実行ファイル)" },
   { value: "python_runner", label: "Python" },
   { value: "pad", label: "PAD (Power Automate)" },
-  { value: "folder_set", label: "フォルダ" },
+  { value: "folder", label: "フォルダ" },
+  { value: "folder_set", label: "フォルダセット (複数)" },
+  { value: "bat", label: "BAT (バッチファイル)" },
   { value: "shortcut", label: "ショートカット" },
 ];

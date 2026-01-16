@@ -54,3 +54,149 @@
 - 既存アーキテクチャに従う（勝手に書き換えない）
 - インクリメンタルな変更、コミットしやすい単位
 - シークレットはハードコードしない（`.env.example`更新）
+
+## 新しいツール種別を追加する際のチェックリスト
+
+新しい `tool_type` を追加する場合、以下の**すべて**を更新する必要がある：
+
+1. **DBマイグレーション** - `tools.tool_type` の CHECK 制約に追加
+   ```sql
+   ALTER TABLE public.tools DROP CONSTRAINT tools_tool_type_check;
+   ALTER TABLE public.tools ADD CONSTRAINT tools_tool_type_check
+     CHECK (tool_type IN ('url', 'sheet', 'excel', 'bi', 'exe', 'python_runner', 'pad', 'folder_set', 'folder', 'shortcut', 'bat', '新しい種別'));
+   ```
+
+2. **型定義** - `src/types/database.ts`
+   - `ToolType` 型に追加
+   - `TOOL_TYPE_LABELS` に追加
+   - `TOOL_TYPE_VARIANTS` に追加
+   - `TOOL_TYPE_OPTIONS` に追加（管理画面のセレクト用）
+
+3. **実行可能判定** - Runner経由で実行する場合
+   - `src/components/tools/ToolCard.tsx` の `EXECUTABLE_TOOL_TYPES` に追加
+   - `src/lib/actions/runs.ts` の `executableTypes` に追加
+
+4. **Runner実装** - `runner/agent.py`
+   - 実行関数を追加（例: `execute_bat`）
+   - `process_task` の分岐に追加
+
+⚠️ **よくあるミス**: DBのCHECK制約を忘れて「invalid input value for enum」エラーになる
+
+## Python実行の注意点
+
+### venv環境のPythonスクリプト
+- 直接 `python script.py` では動かないことが多い
+- `.venv\Scripts\python.exe -m module_name` 形式が必要な場合がある
+- `target` に `プロジェクトパス|モジュール名` 形式を使用
+
+### コンソール表示
+- `subprocess.run()` ではコンソールが表示されない
+- `subprocess.Popen()` + `CREATE_NEW_CONSOLE` フラグで表示される
+  ```python
+  process = subprocess.Popen(
+      cmd,
+      cwd=cwd,
+      creationflags=subprocess.CREATE_NEW_CONSOLE,
+  )
+  returncode = process.wait(timeout=timeout)
+  ```
+
+### BATファイル実行
+- `/k` フラグ: CMDウィンドウが開いたまま残る
+- `/c` フラグ: 実行後にCMDウィンドウが自動で閉じる
+  ```python
+  cmd = ["cmd", "/c", bat_path]  # 自動終了
+  ```
+
+## 環境変数の展開
+
+`runner/agent.py` では以下の環境変数を自動展開：
+- `%OneDrive%` → 実際のOneDriveパス
+- その他の `%VAR%` 形式
+
+```python
+def expand_env_vars(path: str) -> str:
+    return os.path.expandvars(path)
+```
+
+## 設計ミス・教訓
+
+### DialogTrigger を Link 内で使う場合（2026-01）
+
+**問題**: `<Link>` の中に `<DialogTrigger asChild>` を配置すると、ダイアログが開いた瞬間に Link の遷移も発生する
+
+**原因**: DialogTrigger の `asChild` は子要素の onClick をマージするが、イベント伝播の制御が不十分
+
+**NG例**:
+```tsx
+<Link href={`/tools/${id}`}>
+  <Card>
+    <DialogTrigger asChild>
+      <Button onClick={(e) => e.stopPropagation()}>実行</Button>
+    </DialogTrigger>
+  </Card>
+</Link>
+```
+
+**OK例**: div でラップして `preventDefault` + `stopPropagation` を両方呼ぶ
+```tsx
+<Link href={`/tools/${id}`}>
+  <Card>
+    <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+      <DialogTrigger asChild>
+        <Button>実行</Button>
+      </DialogTrigger>
+    </div>
+  </Card>
+</Link>
+```
+
+**教訓**: Radix UI のコンポーネントを Link 内で使う場合は、親要素でイベントを明示的にブロックする
+
+### Helper型ツールの execution_mode 設定忘れ（2026-01）
+
+**問題**: Helper型ツール（folder, folder_set, excel, bi, shortcut, exe, bat）を作成・更新した際に `execution_mode` が `open` のままだと、カードクリック時に詳細ページに遷移してしまい、ローカルアプリ/フォルダが開かない
+
+**原因**: `execution_mode` のデフォルト値が `open` であり、Helper型ツールには明示的に `helper` を設定する必要がある
+
+**影響を受けるツールタイプ**:
+- `folder` - フォルダを開く
+- `folder_set` - 複数フォルダを開く
+- `excel` - Excelファイルを開く
+- `bi` - Power BIを開く
+- `shortcut` - ショートカットを実行
+- `exe` - EXEを実行（確認ダイアログあり）
+- `bat` - BATを実行（確認ダイアログあり）
+
+**チェックリスト**:
+1. DBで `tool_type` が Helper型の場合、`execution_mode = 'helper'` になっているか確認
+2. 管理画面でツールを作成する際、自動で `execution_mode` を設定する処理があるか確認
+3. E2Eテストで `tcportal://` プロトコルが発火することを検証
+
+**確認スクリプト例**:
+```sql
+-- execution_mode が正しくないHelper型ツールを検索
+SELECT id, name, tool_type, execution_mode
+FROM tools
+WHERE tool_type IN ('folder', 'folder_set', 'excel', 'bi', 'shortcut', 'exe', 'bat')
+  AND execution_mode != 'helper';
+```
+
+**教訓**: Helper型ツールを追加・修正する際は必ず `execution_mode = 'helper'` を設定すること
+
+### Sheet型ツールのカードクリック処理（2026-01）
+
+**問題**: `sheet`（Google Sheets）タイプのツールをクリックすると、URLが新しいタブで開かず詳細ページに遷移してしまう
+
+**原因**: ToolCard.tsx の `handleCardClick` で `url` タイプのみ新しいタブで開く処理をしていた
+
+**修正**: `sheet` タイプも `url` と同様に扱う
+```typescript
+// URL/Sheet（Google Sheets）タイプは新しいタブで開く
+if ((tool.tool_type === "url" || tool.tool_type === "sheet") && tool.target) {
+  window.open(tool.target, "_blank", "noopener,noreferrer");
+  return;
+}
+```
+
+**教訓**: URLベースのツールタイプ（url, sheet）は新しいタブで開く処理を共通化する

@@ -2,7 +2,6 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { isCurrentUserAdmin } from "@/lib/queries/admin";
 
 export interface CategoryFormData {
   name: string;
@@ -10,12 +9,13 @@ export interface CategoryFormData {
 }
 
 export async function createCategory(data: CategoryFormData) {
-  const isAdmin = await isCurrentUserAdmin();
-  if (!isAdmin) {
-    return { success: false, error: "権限がありません" };
-  }
-
   const supabase = await createClient();
+
+  // 認証チェック
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "認証が必要です" };
+  }
   const { error } = await supabase
     .from("categories")
     .insert({
@@ -35,12 +35,13 @@ export async function createCategory(data: CategoryFormData) {
 }
 
 export async function updateCategory(id: string, data: CategoryFormData) {
-  const isAdmin = await isCurrentUserAdmin();
-  if (!isAdmin) {
-    return { success: false, error: "権限がありません" };
-  }
-
   const supabase = await createClient();
+
+  // 認証チェック
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "認証が必要です" };
+  }
   const { error } = await supabase
     .from("categories")
     .update({
@@ -61,12 +62,13 @@ export async function updateCategory(id: string, data: CategoryFormData) {
 }
 
 export async function deleteCategory(id: string) {
-  const isAdmin = await isCurrentUserAdmin();
-  if (!isAdmin) {
-    return { success: false, error: "権限がありません" };
-  }
-
   const supabase = await createClient();
+
+  // 認証チェック
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "認証が必要です" };
+  }
 
   // Check if category has tools
   const { data: tools } = await supabase

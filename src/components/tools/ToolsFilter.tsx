@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SortableToolCard } from "./SortableToolCard";
+import { HelperGuideBanner } from "./HelperGuideBanner";
 import type { Tool, Category, ToolType } from "@/types/database";
 import { TOOL_TYPE_LABELS } from "@/types/database";
 import { saveToolOrders } from "@/lib/actions/tool-orders";
@@ -33,7 +34,6 @@ interface ToolWithCategory extends Tool {
 interface ToolsFilterProps {
   tools: ToolWithCategory[];
   categories: Category[];
-  favoriteIds: string[];
   pinnedIds: string[];
   searchQuery?: string;
 }
@@ -45,7 +45,6 @@ const TOOL_TYPES: ToolType[] = [
 export function ToolsFilter({
   tools: initialTools,
   categories,
-  favoriteIds,
   pinnedIds,
   searchQuery: initialSearchQuery,
 }: ToolsFilterProps) {
@@ -55,6 +54,7 @@ export function ToolsFilter({
   const [tools, setTools] = useState(initialTools);
   const [isPending, startTransition] = useTransition();
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const searchQuery = editMode ? "" : initialSearchQuery;
 
@@ -65,7 +65,12 @@ export function ToolsFilter({
 
   const filteredTools = tools.filter((tool) => {
     if (selectedType && tool.tool_type !== selectedType) return false;
-    if (searchQuery) return tool.name.toLowerCase().includes(searchQuery.toLowerCase());
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      const nameMatch = tool.name.toLowerCase().includes(query);
+      const tagMatch = tool.tags?.some((tag) => tag.toLowerCase().includes(query)) ?? false;
+      return nameMatch || tagMatch;
+    }
     return true;
   });
 
@@ -85,6 +90,7 @@ export function ToolsFilter({
 
   const handleSave = () => {
     setSaveStatus("saving");
+    setErrorMessage(null);
     const orders = tools.map((tool, index) => ({ tool_id: tool.id, sort_index: index }));
     startTransition(async () => {
       const result = await saveToolOrders(orders);
@@ -93,8 +99,13 @@ export function ToolsFilter({
         setTimeout(() => setSaveStatus("idle"), 2000);
         router.refresh();
       } else {
+        console.error("Save failed:", result.error);
+        setErrorMessage(result.error || "保存に失敗しました");
         setSaveStatus("error");
-        setTimeout(() => setSaveStatus("idle"), 3000);
+        setTimeout(() => {
+          setSaveStatus("idle");
+          setErrorMessage(null);
+        }, 5000);
       }
     });
   };
@@ -116,6 +127,7 @@ export function ToolsFilter({
 
   return (
     <div className="space-y-6">
+      <HelperGuideBanner className="mb-2" />
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">ツール</h1>
         <div className="flex items-center gap-2">
@@ -125,8 +137,13 @@ export function ToolsFilter({
             </span>
           )}
           {saveStatus === "error" && (
-            <span className="text-sm text-red-600 flex items-center gap-1">
+            <span className="text-sm text-red-600 flex items-center gap-1" title={errorMessage || undefined}>
               <AlertCircle className="w-4 h-4" />保存失敗
+            </span>
+          )}
+          {errorMessage && (
+            <span className="text-sm text-red-500 max-w-xs truncate" title={errorMessage}>
+              {errorMessage}
             </span>
           )}
           <Button variant={editMode ? "default" : "outline"} onClick={handleEditToggle} disabled={isPending}>
@@ -180,13 +197,12 @@ export function ToolsFilter({
                 <section key={category.id}>
                   <h2 className="text-lg font-semibold mb-4 pb-2 border-b">{category.name}</h2>
                   <SortableContext items={categoryTools.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                       {categoryTools.map((tool) => (
                         <SortableToolCard
                           key={tool.id}
                           tool={tool}
                           category={tool.categories}
-                          isFavorite={favoriteIds.includes(tool.id)}
                           isPinned={pinnedIds.includes(tool.id)}
                           editMode={editMode}
                         />

@@ -9,9 +9,12 @@ interface ToolOrderInput {
 }
 
 export async function saveToolOrders(orders: ToolOrderInput[]) {
+  console.log("saveToolOrders called with", orders.length, "orders");
+
   const supabase = await createClient();
 
   const { data: { user } } = await supabase.auth.getUser();
+  console.log("User:", user?.id ? "authenticated" : "not authenticated");
 
   if (!user) {
     return { success: false, error: "ログインが必要です" };
@@ -24,6 +27,8 @@ export async function saveToolOrders(orders: ToolOrderInput[]) {
     sort_index: order.sort_index,
   }));
 
+  console.log("Upserting", upsertData.length, "records to tool_orders");
+
   const { error } = await supabase
     .from("tool_orders")
     .upsert(upsertData, {
@@ -32,8 +37,15 @@ export async function saveToolOrders(orders: ToolOrderInput[]) {
 
   if (error) {
     console.error("Error saving tool orders:", error);
-    return { success: false, error: "並び順の保存に失敗しました" };
+    console.error("Error details - code:", error.code, "message:", error.message, "details:", error.details, "hint:", error.hint);
+    // Check if table doesn't exist (42P01)
+    if (error.code === "42P01") {
+      return { success: false, error: "tool_ordersテーブルが存在しません。マイグレーションを実行してください。" };
+    }
+    return { success: false, error: `並び順の保存に失敗しました: ${error.message}` };
   }
+
+  console.log("Tool orders saved successfully");
 
   revalidatePath("/tools");
   revalidatePath("/");

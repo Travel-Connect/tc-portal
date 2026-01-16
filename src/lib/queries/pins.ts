@@ -12,19 +12,21 @@ export async function getPinnedTools(userId: string): Promise<PinnedToolWithCate
     .from("pins")
     .select(`
       tool_id,
+      sort_order,
       tools (
         *,
         categories (*)
       )
     `)
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .order("sort_order", { ascending: true });
 
   if (error) {
     console.error("Error fetching pins:", error);
     return [];
   }
 
-  // Extract tools from the joined data
+  // Extract tools from the joined data (already sorted by sort_order)
   return (data || [])
     .map((p) => p.tools as unknown as PinnedToolWithCategory)
     .filter((t): t is PinnedToolWithCategory => t !== null && !t.is_archived);

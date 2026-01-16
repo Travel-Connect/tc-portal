@@ -5,7 +5,7 @@ import { Plus, Pencil, Archive, ArchiveRestore, Upload } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import type { Tool, Category, IconMode } from "@/types/database";
+import type { Tool, Category, IconMode, FolderSetConfig } from "@/types/database";
 import { TOOL_TYPE_LABELS } from "@/types/database";
 import { createTool, updateTool, archiveTool, uploadToolIcon } from "@/lib/actions/tools";
 import { ToolIcon } from "@/components/tools";
@@ -28,6 +28,9 @@ const defaultForm: FormState = {
   target: "",
   icon_mode: "lucide",
   icon_key: "Folder",
+  icon_path: "",
+  paths: "",
+  tags: [],
 };
 
 export function ToolList({ initialTools, categories }: ToolListProps) {
@@ -49,6 +52,14 @@ export function ToolList({ initialTools, categories }: ToolListProps) {
 
   const handleEdit = (tool: ToolWithCategory) => {
     setEditingId(tool.id);
+    // folder_set の場合は run_config.paths から復元
+    let paths = "";
+    if (tool.tool_type === "folder_set" && tool.run_config) {
+      const config = tool.run_config as FolderSetConfig;
+      if (config.paths) {
+        paths = config.paths.join("\n");
+      }
+    }
     setForm({
       name: tool.name,
       category_id: tool.category_id,
@@ -57,6 +68,9 @@ export function ToolList({ initialTools, categories }: ToolListProps) {
       target: tool.target || "",
       icon_mode: tool.icon_mode,
       icon_key: tool.icon_key || "Folder",
+      icon_path: tool.icon_path || "",
+      paths,
+      tags: tool.tags || [],
     });
     setError(null);
   };
@@ -65,6 +79,20 @@ export function ToolList({ initialTools, categories }: ToolListProps) {
     setIsAdding(false);
     setEditingId(null);
     setError(null);
+  };
+
+  // folder_set の場合に run_config を生成
+  const buildRunConfig = () => {
+    if (form.tool_type === "folder_set" && form.paths.trim()) {
+      const paths = form.paths
+        .split("\n")
+        .map((p) => p.trim())
+        .filter((p) => p.length > 0);
+      if (paths.length > 0) {
+        return { paths };
+      }
+    }
+    return null;
   };
 
   const handleSaveNew = () => {
@@ -84,11 +112,20 @@ export function ToolList({ initialTools, categories }: ToolListProps) {
         tool_type: form.tool_type,
         description: form.description.trim() || undefined,
         target: form.target.trim() || undefined,
-        icon_mode: form.icon_mode,
+        icon_mode: form.pendingIconFile ? "upload" : form.icon_mode,
         icon_key: form.icon_key || undefined,
+        run_config: buildRunConfig(),
+        tags: form.tags,
       });
 
-      if (result.success) {
+      if (result.success && result.id) {
+        // 新規作成後、アイコンファイルがあればアップロード
+        if (form.pendingIconFile) {
+          const uploadResult = await uploadToolIcon(result.id, form.pendingIconFile);
+          if (!uploadResult.success) {
+            setError(uploadResult.error || "アイコンのアップロードに失敗しました");
+          }
+        }
         setIsAdding(false);
         setError(null);
         window.location.reload();
@@ -104,15 +141,34 @@ export function ToolList({ initialTools, categories }: ToolListProps) {
       return;
     }
 
+    const runConfig = buildRunConfig();
+
     startTransition(async () => {
+      // アイコンファイルがあれば先にアップロード
+      let iconPath = form.icon_path;
+      let iconMode = form.icon_mode;
+      if (form.pendingIconFile) {
+        const uploadResult = await uploadToolIcon(id, form.pendingIconFile);
+        if (uploadResult.success && uploadResult.iconPath) {
+          iconPath = uploadResult.iconPath;
+          iconMode = "upload";
+        } else {
+          setError(uploadResult.error || "アイコンのアップロードに失敗しました");
+          return;
+        }
+      }
+
       const result = await updateTool(id, {
         name: form.name.trim(),
         category_id: form.category_id,
         tool_type: form.tool_type,
         description: form.description.trim() || undefined,
         target: form.target.trim() || undefined,
-        icon_mode: form.icon_mode,
+        icon_mode: iconMode,
         icon_key: form.icon_key || undefined,
+        icon_path: iconPath || undefined,
+        run_config: runConfig,
+        tags: form.tags,
       });
 
       if (result.success) {
@@ -126,8 +182,11 @@ export function ToolList({ initialTools, categories }: ToolListProps) {
                   tool_type: form.tool_type,
                   description: form.description.trim() || null,
                   target: form.target.trim() || null,
-                  icon_mode: form.icon_mode,
+                  icon_mode: iconMode,
                   icon_key: form.icon_key || null,
+                  icon_path: iconPath || null,
+                  run_config: runConfig,
+                  tags: form.tags,
                   categories: categories.find((c) => c.id === form.category_id) || null,
                 }
               : t

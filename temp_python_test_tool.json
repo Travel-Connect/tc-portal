@@ -1,0 +1,8 @@
+{
+  "category_id": "11111111-1111-1111-1111-111111111103",
+  "name": "Python簡易テスト",
+  "tool_type": "python_runner",
+  "icon_mode": "lucide",
+  "icon_key": "Code",
+  "target": "C:\\Users\\tckam\\projects\\tc-portal\\runner\\test_python.py"
+}
