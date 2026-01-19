@@ -231,7 +231,55 @@ tcportal://open?payload=eyJhY3Rpb24iOiJvcGVuX2ZvbGRlciIsInBhdGgiOiJDOlxcVXNlcnMi
 
 ---
 
-## 5. 監視・アラート
+## 5. レビュー用ファイルのエクスポート
+
+### 5.1 レビューパックの生成
+
+外部レビュー（ChatGPT等）にコードを渡す際に使用します。
+
+```powershell
+.\scripts\export-review-pack.ps1
+```
+
+**出力:** `tc-portal-review-pack.zip`
+
+**含まれるファイル:**
+- `docs/review/` - レビュー用ドキュメント
+- `supabase/` - DBマイグレーション
+- `src/` - Next.jsソースコード
+- `tests/` - E2Eテスト
+- `runner/` - Windows Runner Agent
+- `helper/` - TC Portal Helper
+- 設定ファイル（package.json, tsconfig.json等）
+- `CLAUDE.md` - プロジェクト仕様
+
+**含まれないファイル:**
+- `node_modules/`, `.next/` - ビルド成果物
+- `.venv/`, `__pycache__/` - Python仮想環境
+- `.auth/` - 認証情報
+- `*.log` - ログファイル
+
+### 5.2 Playwrightレポートのエクスポート
+
+E2Eテスト実行後のHTMLレポートをZIP化します。
+
+```powershell
+# まずテストを実行
+npx playwright test
+
+# レポートをエクスポート
+.\scripts\export-playwright-report.ps1
+```
+
+**出力:** `playwright-report-YYYYMMDD-HHMMSS.zip`
+
+**使い方:**
+1. ZIPを展開
+2. `index.html` をブラウザで開く
+
+---
+
+## 6. 監視・アラート
 
 ### 推奨監視項目
 
