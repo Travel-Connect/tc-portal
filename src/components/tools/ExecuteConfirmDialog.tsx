@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import type { Tool } from "@/types/database";
 import { TOOL_TYPE_LABELS } from "@/types/database";
 import { createRun, createHelperRun } from "@/lib/actions/runs";
-import { isHelperTool, generateHelperUrl, HELPER_SUCCESS_MESSAGES } from "@/lib/helper";
+import { generateHelperUrl, HELPER_SUCCESS_MESSAGES } from "@/lib/helper";
 
 interface ExecuteConfirmDialogProps {
   tool: Tool;
@@ -51,8 +51,8 @@ export function ExecuteConfirmDialog({
     }
   }, [isControlled, controlledOnOpenChange]);
 
-  // Helper対象かどうか
-  const isHelper = isHelperTool(tool);
+  // execution_mode で判定（tool_type ではなく execution_mode を正とする）
+  const isHelper = tool.execution_mode === "helper";
 
   const handleExecute = useCallback(() => {
     setResult(null);

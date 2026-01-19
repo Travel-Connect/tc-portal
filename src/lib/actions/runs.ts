@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { randomBytes, createHash } from "crypto";
-import { HELPER_SUCCESS_MESSAGES, HELPER_TOOL_TYPES } from "@/lib/helper";
+import { HELPER_SUCCESS_MESSAGES } from "@/lib/helper";
 
 /**
  * 実行依頼を作成する
@@ -35,10 +35,8 @@ export async function createRun(toolId: string): Promise<{
   }
 
   // execution_mode が queue でない場合は実行依頼を作成しない
-  // ただし、EXE/Python/PAD/Excel/Sheet/Folder/BI/BAT は queue でなくても作成可能にする
-  const executableTypes = ["python_runner", "pad", "exe", "excel", "sheet", "folder", "bi", "bat"];
-  if (!executableTypes.includes(tool.tool_type)) {
-    return { success: false, error: "このツールは実行依頼できません" };
+  if (tool.execution_mode !== "queue") {
+    return { success: false, error: `このツールはRunner経由の実行対象ではありません（execution_mode: ${tool.execution_mode}）` };
   }
 
   // run_token を生成（平文はDBに保存しない）
@@ -101,7 +99,7 @@ export async function createHelperRun(toolId: string): Promise<{
   // ツールの存在確認
   const { data: tool, error: toolError } = await supabase
     .from("tools")
-    .select("id, name, tool_type")
+    .select("id, name, tool_type, execution_mode")
     .eq("id", toolId)
     .single();
 
@@ -109,9 +107,9 @@ export async function createHelperRun(toolId: string): Promise<{
     return { success: false, error: "ツールが見つかりません" };
   }
 
-  // Helper対象のツールタイプか確認
-  if (!HELPER_TOOL_TYPES.includes(tool.tool_type)) {
-    return { success: false, error: "このツールはHelper起動対象ではありません" };
+  // execution_mode が helper でない場合は記録を作成しない
+  if (tool.execution_mode !== "helper") {
+    return { success: false, error: `このツールはHelper起動対象ではありません（execution_mode: ${tool.execution_mode}）` };
   }
 
   // run_token を生成（Helper起動でも一応生成）
