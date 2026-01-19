@@ -200,3 +200,56 @@ if ((tool.tool_type === "url" || tool.tool_type === "sheet") && tool.target) {
 ```
 
 **教訓**: URLベースのツールタイプ（url, sheet）は新しいタブで開く処理を共通化する
+
+### execution_mode の判定ロジック（2026-01）
+
+**問題**: `ExecuteConfirmDialog` が `isHelperTool(tool)` （tool_type をチェック）を使っていたため、PAD/python_runner が誤って helper 経由で実行されていた
+
+**原因**: `tool_type` ではなく `execution_mode` カラムを正として判定すべきだった
+
+**修正**:
+```typescript
+// NG: tool_type で判定
+const isHelper = isHelperTool(tool); // tool_type をチェック
+
+// OK: execution_mode で判定
+const isHelper = tool.execution_mode === "helper";
+```
+
+**execution_mode の対応表**:
+| execution_mode | tool_type | 動作 |
+|---------------|-----------|------|
+| `open` | url, sheet | 新しいタブでURLを開く |
+| `helper` | excel, bi, folder, folder_set, shortcut, bat, exe | tcportal:// でローカルHelper起動 |
+| `queue` | pad, python_runner | Runs に積んで Runner で実行 |
+
+**教訓**: 実行フローの判定は `execution_mode` を正とし、`tool_type` は表示ラベルや分類にのみ使用する
+
+## E2Eテスト
+
+### セットアップ
+
+1. `.env.local` に認証情報を設定:
+```env
+E2E_EMAIL=your-test-user@example.com
+E2E_PASSWORD=your-password
+E2E_BASE_URL=http://localhost:3000
+```
+
+2. テスト実行:
+```bash
+npx playwright test tests/e2e/execution-mode.spec.ts
+```
+
+### テストファイル
+
+| ファイル | テスト内容 |
+|---------|-----------|
+| `tests/e2e/global-setup.ts` | 認証状態のセットアップ |
+| `tests/e2e/execution-mode.spec.ts` | execution_mode ごとの動作検証 |
+
+### execution_mode E2Eテスト
+
+- **Queue Mode (PAD/Python)**: ツールクリック → 確認ダイアログ →「実行する」ボタン → runs に待機中/実行中/成功/失敗のいずれかが表示される
+- **Helper Mode (Excel/BAT/Folder等)**: ツールクリック → 確認ダイアログ →「起動する」ボタン → runs に成功が記録される
+- **Open Mode (URL/Sheet)**: ツールクリック → 新しいタブが開く（runs は作成されない）

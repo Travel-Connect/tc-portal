@@ -1,4 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
+import dotenv from "dotenv";
+import path from "path";
+
+// .env.local を読み込み
+dotenv.config({ path: path.resolve(__dirname, ".env.local") });
 
 /**
  * TC Portal E2E Test Configuration
