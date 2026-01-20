@@ -83,20 +83,74 @@ if ($standardOneDrive -and (Test-Path $standardOneDrive)) {
     Write-Log "  -> NOT FOUND or NOT SET"
 }
 
-# 法人OneDrive（トラベルコネクト）
+# 法人OneDrive（トラベルコネクト）- 複数パターンをチェック
 $corporateOneDrivePaths = @(
+    # 標準的なパス（C:ドライブ）
     "$env:USERPROFILE\OneDrive - トラベルコネクト",
     "$env:USERPROFILE\OneDrive - Travel Connect",
-    "C:\Users\$env:USERNAME\OneDrive - トラベルコネクト"
+    "C:\Users\$env:USERNAME\OneDrive - トラベルコネクト",
+    # D:ドライブ（カスタム同期先）
+    "D:\OneDrive - トラベルコネクト",
+    "D:\OneDrive - $env:USERNAME\OneDrive - トラベルコネクト",
+    # ネストしたOneDrive構造
+    "D:\OneDrive - *\OneDrive - トラベルコネクト"
 )
 
 Write-Log ""
-Write-Log "Corporate OneDrive Paths:"
+Write-Log "Corporate OneDrive Paths (predefined):"
 foreach ($path in $corporateOneDrivePaths) {
-    if (Test-Path $path) {
-        Write-Log "  [FOUND] $path"
+    # ワイルドカードパスの場合は解決を試みる
+    if ($path -like "*`**") {
+        $resolved = Resolve-Path -Path $path -ErrorAction SilentlyContinue
+        if ($resolved) {
+            foreach ($r in $resolved) {
+                Write-Log "  [FOUND] $($r.Path) (wildcard match)"
+            }
+        } else {
+            Write-Log "  [NOT FOUND] $path"
+        }
     } else {
-        Write-Log "  [NOT FOUND] $path"
+        if (Test-Path $path) {
+            Write-Log "  [FOUND] $path"
+        } else {
+            Write-Log "  [NOT FOUND] $path"
+        }
+    }
+}
+
+# 全ドライブでOneDrive - トラベルコネクトを検索
+Write-Log ""
+Write-Log "Searching all drives for 'OneDrive - トラベルコネクト'..."
+$foundOneDrivePaths = @()
+$drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used -gt 0 }
+foreach ($drive in $drives) {
+    $searchPaths = @(
+        "$($drive.Root)OneDrive - トラベルコネクト",
+        "$($drive.Root)OneDrive*\OneDrive - トラベルコネクト"
+    )
+    foreach ($searchPath in $searchPaths) {
+        $found = Resolve-Path -Path $searchPath -ErrorAction SilentlyContinue
+        if ($found) {
+            foreach ($f in $found) {
+                if ($foundOneDrivePaths -notcontains $f.Path) {
+                    $foundOneDrivePaths += $f.Path
+                    Write-Log "  [FOUND] $($f.Path)"
+                }
+            }
+        }
+    }
+}
+if ($foundOneDrivePaths.Count -eq 0) {
+    Write-Log "  No 'OneDrive - トラベルコネクト' folder found on any drive"
+}
+
+# ポータルサイトフォルダの検索
+Write-Log ""
+Write-Log "Searching for portal site folder (014.ポータルサイト)..."
+foreach ($oneDrivePath in $foundOneDrivePaths) {
+    $portalPath = Join-Path $oneDrivePath "014.ポータルサイト"
+    if (Test-Path $portalPath) {
+        Write-Log "  [FOUND] $portalPath"
     }
 }
 
@@ -151,11 +205,22 @@ if (Test-Path $protocolPath) {
 # --------------------------------------------------
 Write-Section "4. Helper Files"
 
+# 基本パス
 $helperPaths = @(
     (Join-Path $projectRoot "helper\dist\tcportal-helper.exe"),
     (Join-Path $projectRoot "helper\dist-shared\tcportal-helper.exe"),
     "$env:USERPROFILE\OneDrive - トラベルコネクト\tc-portal-helper\tcportal-helper.exe"
 )
+
+# 発見したOneDriveパスからもHelper検索
+foreach ($oneDrivePath in $foundOneDrivePaths) {
+    $helperPaths += Join-Path $oneDrivePath "tc-portal-helper\tcportal-helper.exe"
+    $helperPaths += Join-Path $oneDrivePath "014.ポータルサイト\helper\dist\tcportal-helper.exe"
+    $helperPaths += Join-Path $oneDrivePath "014.ポータルサイト\helper\dist-shared\tcportal-helper.exe"
+}
+
+# 重複を除去
+$helperPaths = $helperPaths | Select-Object -Unique
 
 Write-Log "Checking Helper executable locations:"
 foreach ($path in $helperPaths) {

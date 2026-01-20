@@ -20,8 +20,12 @@ TC PortalのHelper（tcportal://プロトコル）とRunner（queueベースの�
 | 項目 | 想定パス |
 |------|---------|
 | OneDrive同期フォルダ | `C:\Users\<user>\OneDrive - トラベルコネクト` |
+| (カスタム同期先) | `D:\OneDrive - <user>\OneDrive - トラベルコネクト` |
+| ポータルサイトフォルダ | `<OneDrive>\014.ポータルサイト` |
 | Helper配置先 | OneDrive内の共有フォルダ or 各PC個別 |
 | Runner配置先 | OneDrive内の共有フォルダ or 各PC個別 |
+
+**注意**: OneDriveの同期先がD:ドライブなど標準以外の場合があります。`collect-env.ps1`スクリプトは全ドライブを検索して自動検出します。
 
 ---
 
@@ -273,6 +277,16 @@ python agent.py
    ```powershell
    Get-ChildItem env: | Where-Object { $_.Value -like "*OneDrive*" }
    ```
+3. **D:ドライブなど標準以外の場所に同期している場合**:
+   ```powershell
+   # 全ドライブでOneDriveフォルダを検索
+   Get-PSDrive -PSProvider FileSystem | ForEach-Object {
+       Get-ChildItem "$($_.Root)" -Filter "OneDrive*" -Directory -ErrorAction SilentlyContinue
+   }
+   ```
+4. カスタムパスの例:
+   - `D:\OneDrive - <ユーザー名>\OneDrive - トラベルコネクト`
+   - `D:\OneDrive - トラベルコネクト\014.ポータルサイト`
 
 #### ファイルが見つからない
 1. パスに日本語や空白が含まれていないか確認
