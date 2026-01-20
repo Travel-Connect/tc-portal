@@ -39,7 +39,7 @@ interface ToolsFilterProps {
 }
 
 const TOOL_TYPES: ToolType[] = [
-  "url", "sheet", "excel", "bi", "exe", "python_runner", "pad", "folder_set", "shortcut",
+  "url", "sheet", "excel", "bi", "exe", "python_runner", "pad", "folder", "folder_set", "shortcut", "bat",
 ];
 
 export function ToolsFilter({

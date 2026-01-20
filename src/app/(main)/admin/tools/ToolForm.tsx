@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { TagInput } from "@/components/ui/tag-input";
 import { ToolIcon } from "@/components/tools";
+import { getToolIconUrl } from "@/lib/supabase/storage";
 import type { Category, ToolType, IconMode } from "@/types/database";
 import { TOOL_TYPE_OPTIONS } from "@/types/database";
 
@@ -275,7 +276,7 @@ export function ToolForm({
                   <div className="flex items-center justify-center gap-3">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={previewUrl || (form.icon_path ? `/api/storage/tool-icons/${form.icon_path}` : "")}
+                      src={previewUrl || (form.icon_path ? getToolIconUrl(form.icon_path) : "")}
                       alt="アイコンプレビュー"
                       className="w-12 h-12 object-contain rounded border"
                     />

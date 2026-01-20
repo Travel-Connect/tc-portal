@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Bell, Grid3X3 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AllToolsSection, PinnedToolsSection } from "@/components/tools";
@@ -20,11 +21,13 @@ function SectionHeader({ icon, title }: { icon: React.ReactNode; title: string }
 // カテゴリカード
 function CategoryCard({ category }: { category: Category }) {
   return (
-    <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
-      <CardHeader className="py-3 px-4">
-        <CardTitle className="text-sm font-medium">{category.name}</CardTitle>
-      </CardHeader>
-    </Card>
+    <Link href="/tools">
+      <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+        <CardHeader className="py-3 px-4">
+          <CardTitle className="text-sm font-medium">{category.name}</CardTitle>
+        </CardHeader>
+      </Card>
+    </Link>
   );
 }
 
