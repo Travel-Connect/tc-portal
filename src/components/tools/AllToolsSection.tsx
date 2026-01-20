@@ -124,7 +124,7 @@ export function AllToolsSection({ tools: initialTools, categories }: AllToolsSec
   }, []);
 
   return (
-    <section>
+    <section data-testid="all-tools-section">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <div className="text-muted-foreground"><Folder className="w-5 h-5" /></div>
@@ -147,11 +147,12 @@ export function AllToolsSection({ tools: initialTools, categories }: AllToolsSec
             </span>
           )}
           <button
+            data-testid="edit-toggle-all"
             onClick={handleEditToggle}
             disabled={isPending}
             className={`text-xs px-2 py-1 rounded flex items-center gap-1 transition-colors ${
-              editMode 
-                ? "bg-primary text-primary-foreground" 
+              editMode
+                ? "bg-primary text-primary-foreground"
                 : "bg-muted hover:bg-muted/80 text-muted-foreground"
             }`}
           >

@@ -248,7 +248,7 @@ export function ToolList({ initialTools, categories }: ToolListProps) {
         >
           {showArchived ? "アーカイブを非表示" : "アーカイブを表示"}
         </Button>
-        <Button onClick={handleAdd} disabled={isAdding || isPending}>
+        <Button data-testid="admin-add-tool" onClick={handleAdd} disabled={isAdding || isPending}>
           <Plus className="w-4 h-4 mr-2" />
           ツールを追加
         </Button>
@@ -284,6 +284,7 @@ export function ToolList({ initialTools, categories }: ToolListProps) {
               ) : (
                 <div
                   key={tool.id}
+                  data-testid={`admin-tool-${tool.id}`}
                   className={`flex items-center justify-between p-3 rounded-lg ${
                     tool.is_archived ? "bg-muted/30 opacity-60" : "bg-muted/50"
                   }`}

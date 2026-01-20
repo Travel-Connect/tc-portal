@@ -127,7 +127,7 @@ export function CategoryList({ initialCategories }: CategoryListProps) {
       )}
 
       <div className="flex justify-end">
-        <Button onClick={handleAdd} disabled={isAdding || isPending}>
+        <Button data-testid="admin-add-category" onClick={handleAdd} disabled={isAdding || isPending}>
           <Plus className="w-4 h-4 mr-2" />
           カテゴリを追加
         </Button>
@@ -179,6 +179,7 @@ export function CategoryList({ initialCategories }: CategoryListProps) {
             {categories.map((category) => (
               <div
                 key={category.id}
+                data-testid={`admin-category-${category.id}`}
                 className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
               >
                 {editingId === category.id ? (

@@ -66,6 +66,7 @@ export function ToolTile({ tool, disableLink = false }: ToolTileProps) {
 
   const tileContent = (
     <div
+      data-testid={`tool-tile-${tool.id}`}
       className={`flex flex-col items-center justify-center p-4 bg-card border rounded-lg transition-colors ${disableLink ? "" : "hover:bg-accent/50 cursor-pointer"}`}
       onClick={handleClick}
     >

@@ -123,6 +123,7 @@ export function ToolCard({
 
   const cardContent = (
     <Card
+      data-testid={`tool-card-${tool.id}`}
       className={`transition-shadow h-full ${disableLink ? "" : "hover:shadow-md cursor-pointer"}`}
       onClick={handleCardClick}
     >
@@ -184,6 +185,7 @@ export function ToolCard({
                 </div>
               )}
               <Button
+                data-testid={`pin-toggle-${tool.id}`}
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"

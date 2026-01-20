@@ -59,9 +59,9 @@ export default async function RunsPage() {
                 const statusConfig = STATUS_CONFIG[run.status];
                 const StatusIcon = statusConfig.icon;
                 return (
-                  <div key={run.id} className="grid grid-cols-7 gap-4 text-sm py-2 border-b last:border-0 items-center">
+                  <div key={run.id} data-testid={`run-row-${run.id}`} className="grid grid-cols-7 gap-4 text-sm py-2 border-b last:border-0 items-center">
                     <div>
-                      <Badge variant={statusConfig.variant} className="flex items-center gap-1 w-fit">
+                      <Badge data-testid={`run-status-${run.id}`} variant={statusConfig.variant} className="flex items-center gap-1 w-fit">
                         <StatusIcon className={`w-3 h-3 ${run.status === "running" ? "animate-spin" : ""}`} />
                         {statusConfig.label}
                       </Badge>

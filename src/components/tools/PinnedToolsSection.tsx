@@ -117,7 +117,7 @@ export function PinnedToolsSection({ tools: initialTools }: PinnedToolsSectionPr
   }, []);
 
   return (
-    <section>
+    <section data-testid="pin-section">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <div className="text-muted-foreground">
@@ -138,6 +138,7 @@ export function PinnedToolsSection({ tools: initialTools }: PinnedToolsSectionPr
               </span>
             )}
             <Button
+              data-testid="edit-toggle-pins"
               variant={editMode ? "default" : "outline"}
               size="sm"
               onClick={handleEditToggle}
