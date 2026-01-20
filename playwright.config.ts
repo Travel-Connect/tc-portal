@@ -34,12 +34,17 @@ export default defineConfig({
   },
 
   projects: [
-    // 認証状態をセットアップ
+    // 単一ユーザー認証セットアップ（レガシー）
     {
       name: "setup",
       testMatch: /global-setup\.ts/,
     },
-    // メインテスト（認証済み状態を使用）
+    // マルチユーザー認証セットアップ
+    {
+      name: "setup-multi",
+      testMatch: /auth\.setup\.ts/,
+    },
+    // 単一ユーザーテスト（レガシー）
     {
       name: "chromium",
       use: {
@@ -47,6 +52,17 @@ export default defineConfig({
         storageState: "tests/e2e/.auth/user.json",
       },
       dependencies: ["setup"],
+      testIgnore: /multi-user\.spec\.ts/,
+    },
+    // UserA用テスト
+    {
+      name: "userA",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: "tests/e2e/.auth/userA.json",
+      },
+      dependencies: ["setup-multi"],
+      testMatch: /multi-user\.spec\.ts/,
     },
   ],
 
