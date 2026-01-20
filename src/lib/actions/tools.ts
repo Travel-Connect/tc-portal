@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import type { ToolType, IconMode, RunConfig } from "@/types/database";
+import { getExecutionModeForToolType } from "@/types/database";
 
 export interface ToolFormData {
   name: string;
@@ -26,12 +27,16 @@ export async function createTool(data: ToolFormData) {
   if (!user) {
     return { success: false, error: "認証が必要です" };
   }
+  // tool_type から execution_mode を自動決定
+  const execution_mode = getExecutionModeForToolType(data.tool_type);
+
   const { data: newTool, error } = await supabase
     .from("tools")
     .insert({
       name: data.name,
       category_id: data.category_id,
       tool_type: data.tool_type,
+      execution_mode,
       description: data.description || null,
       target: data.target || null,
       icon_mode: data.icon_mode,
@@ -72,6 +77,11 @@ export async function updateTool(id: string, data: Partial<ToolFormData>) {
     icon_key: data.icon_key || null,
     icon_path: data.icon_path || null,
   };
+
+  // tool_type が変更された場合、execution_mode も自動で矯正
+  if (data.tool_type) {
+    updateData.execution_mode = getExecutionModeForToolType(data.tool_type);
+  }
 
   // run_config が明示的に渡された場合のみ更新
   if (data.run_config !== undefined) {

@@ -125,6 +125,40 @@ export interface RunWithDetails extends Run {
   profiles?: Profile;
 }
 
+/**
+ * tool_type から execution_mode を決定する
+ * - open: url, sheet (ブラウザで開く)
+ * - queue: python_runner, pad (Runner経由で実行)
+ * - helper: excel, bi, folder, folder_set, shortcut, exe, bat (ローカルHelper起動)
+ */
+export function getExecutionModeForToolType(toolType: ToolType): ExecutionMode {
+  switch (toolType) {
+    // open: ブラウザで新しいタブを開く
+    case "url":
+    case "sheet":
+      return "open";
+
+    // queue: Runsに積んでRunnerで実行
+    case "python_runner":
+    case "pad":
+      return "queue";
+
+    // helper: tcportal://でローカルHelper起動
+    case "excel":
+    case "bi":
+    case "folder":
+    case "folder_set":
+    case "shortcut":
+    case "exe":
+    case "bat":
+      return "helper";
+
+    default:
+      // 未知の tool_type は helper にフォールバック
+      return "helper";
+  }
+}
+
 // Tool type labels for display
 export const TOOL_TYPE_LABELS: Record<ToolType, string> = {
   url: "Web",
