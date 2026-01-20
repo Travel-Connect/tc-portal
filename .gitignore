@@ -68,3 +68,6 @@ helper/dist/
 # Export scripts output
 tc-portal-review-pack.zip
 playwright-report-*.zip
+
+# Smoke test logs
+/logs/*.txt
