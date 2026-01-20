@@ -59,7 +59,7 @@ export function CategoryList({ initialCategories }: CategoryListProps) {
       if (result.success) {
         // Optimistically add to list
         const newCategory: Category = {
-          id: crypto.randomUUID(),
+          id: globalThis.crypto?.randomUUID?.() ?? `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
           name: formName.trim(),
           sort_index: formSortIndex,
           created_at: new Date().toISOString(),

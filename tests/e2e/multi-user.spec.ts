@@ -227,10 +227,14 @@ test.describe("Multi-User: Shared Data", () => {
       // フォームに入力（最小限の情報）
       await userBPage.getByLabel("ツール名").fill(testToolName);
 
-      // カテゴリを選択（最初の選択肢）
-      const categorySelect = userBPage.locator('select, [role="combobox"]').first();
-      if (await categorySelect.isVisible().catch(() => false)) {
-        await categorySelect.selectOption({ index: 1 });
+      // カテゴリを選択（Radix UI combobox対応）
+      const categoryCombobox = userBPage.locator('[role="combobox"]').first();
+      if (await categoryCombobox.isVisible().catch(() => false)) {
+        await categoryCombobox.click();
+        // ドロップダウンが開くのを待つ
+        const option = userBPage.locator('[role="option"]').first();
+        await option.waitFor({ state: "visible", timeout: 3000 });
+        await option.click();
       }
 
       await userBPage.getByRole("button", { name: /保存|作成/i }).click();
