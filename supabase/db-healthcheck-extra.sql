@@ -1,6 +1,6 @@
 -- TC Portal DB Health Check Extra SQL
 -- Supabase SQL Editor で手動実行するためのクエリ集
--- RLS、制約、インデックスの確認用
+-- RLS、制約、インデックス、関数セキュリティの確認用
 
 -- =====================================================
 -- 1. RLS (Row Level Security) 設定確認
@@ -249,3 +249,99 @@ FROM runs r
 JOIN tools t ON r.tool_id = t.id
 GROUP BY t.tool_type
 ORDER BY t.tool_type;
+
+-- =====================================================
+-- 11. SECURITY DEFINER 関数のセキュリティ確認
+-- =====================================================
+
+-- 11-1. SECURITY DEFINER 関数一覧
+SELECT
+  p.proname AS function_name,
+  pg_get_function_identity_arguments(p.oid) AS arguments,
+  p.prosecdef AS is_security_definer,
+  current_setting('search_path') AS search_path
+FROM pg_proc p
+JOIN pg_namespace n ON p.pronamespace = n.oid
+WHERE n.nspname = 'public'
+  AND p.prosecdef = true
+ORDER BY p.proname;
+
+-- 11-2. 関数の権限一覧（誰が実行可能か）
+SELECT
+  p.proname AS function_name,
+  pg_get_function_identity_arguments(p.oid) AS arguments,
+  r.rolname AS granted_to,
+  CASE
+    WHEN has_function_privilege(r.oid, p.oid, 'EXECUTE') THEN 'YES'
+    ELSE 'NO'
+  END AS can_execute
+FROM pg_proc p
+JOIN pg_namespace n ON p.pronamespace = n.oid
+CROSS JOIN pg_roles r
+WHERE n.nspname = 'public'
+  AND p.prosecdef = true
+  AND r.rolname IN ('anon', 'authenticated', 'service_role')
+ORDER BY p.proname, r.rolname;
+
+-- 11-3. claim_run の権限確認（service_roleのみが期待値）
+SELECT
+  p.proname AS function_name,
+  r.rolname AS role,
+  CASE
+    WHEN has_function_privilege(r.oid, p.oid, 'EXECUTE') THEN 'CAN EXECUTE'
+    ELSE 'CANNOT EXECUTE'
+  END AS permission
+FROM pg_proc p
+JOIN pg_namespace n ON p.pronamespace = n.oid
+CROSS JOIN pg_roles r
+WHERE n.nspname = 'public'
+  AND p.proname = 'claim_run'
+  AND r.rolname IN ('anon', 'authenticated', 'service_role');
+
+-- 11-4. 関数定義の確認（search_path設定を含む）
+SELECT
+  p.proname AS function_name,
+  p.proconfig AS config_settings,
+  LEFT(pg_get_functiondef(p.oid), 500) AS definition_preview
+FROM pg_proc p
+JOIN pg_namespace n ON p.pronamespace = n.oid
+WHERE n.nspname = 'public'
+  AND p.prosecdef = true
+ORDER BY p.proname;
+
+-- =====================================================
+-- 12. マイグレーション整合性チェック
+-- =====================================================
+
+-- 12-1. tool_orders の実際のカラム（context列の有無を確認）
+SELECT
+  column_name,
+  data_type,
+  is_nullable,
+  column_default
+FROM information_schema.columns
+WHERE table_schema = 'public' AND table_name = 'tool_orders'
+ORDER BY ordinal_position;
+
+-- 12-2. tool_orders の主キー構成
+SELECT
+  tc.constraint_name,
+  kcu.column_name
+FROM information_schema.table_constraints tc
+JOIN information_schema.key_column_usage kcu
+  ON tc.constraint_name = kcu.constraint_name
+WHERE tc.table_schema = 'public'
+  AND tc.table_name = 'tool_orders'
+  AND tc.constraint_type = 'PRIMARY KEY'
+ORDER BY kcu.ordinal_position;
+
+-- 12-3. 重複RLSポリシーの検出
+SELECT
+  tablename,
+  COUNT(*) as policy_count,
+  ARRAY_AGG(policyname ORDER BY policyname) as policies
+FROM pg_policies
+WHERE schemaname = 'public'
+GROUP BY tablename
+HAVING COUNT(*) > 4
+ORDER BY policy_count DESC;
