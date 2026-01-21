@@ -15,9 +15,10 @@ import { createHelperRun } from "@/lib/actions/runs";
 interface ToolTileProps {
   tool: Tool;
   disableLink?: boolean;
+  accentColor?: string | null;
 }
 
-export function ToolTile({ tool, disableLink = false }: ToolTileProps) {
+export function ToolTile({ tool, disableLink = false, accentColor }: ToolTileProps) {
   const router = useRouter();
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -64,10 +65,16 @@ export function ToolTile({ tool, disableLink = false }: ToolTileProps) {
 
   const needsConfirmation = requiresConfirmation(tool);
 
+  // アクセントカラーがある場合、背景を薄く染める
+  const tileStyle = accentColor
+    ? { backgroundColor: `${accentColor}15` } // 15 = 約8%の透明度
+    : undefined;
+
   const tileContent = (
     <div
       data-testid={`tool-tile-${tool.id}`}
       className={`flex flex-col items-center justify-center p-4 bg-card border rounded-lg transition-colors ${disableLink ? "" : "hover:bg-accent/50 cursor-pointer"}`}
+      style={tileStyle}
       onClick={handleClick}
     >
       <div className="w-10 h-10 flex items-center justify-center text-muted-foreground mb-2">

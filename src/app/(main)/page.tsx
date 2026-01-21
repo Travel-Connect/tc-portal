@@ -6,7 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getCategories } from "@/lib/queries/categories";
 import { getToolsWithUserOrder } from "@/lib/queries/tools";
 import { getPinnedTools } from "@/lib/queries/pins";
-import type { Tool, Category } from "@/types/database";
+import { getUserToolPreferences } from "@/lib/actions/tool-preferences";
+import type { Tool, Category, ToolUserPreference } from "@/types/database";
 
 // セクションヘッダー
 function SectionHeader({ icon, title }: { icon: React.ReactNode; title: string }) {
@@ -36,14 +37,18 @@ export default async function HomePage() {
   const { data: { user } } = await supabase.auth.getUser();
 
   // Fetch all data in parallel
-  const [categories, allTools, pinnedTools] = await Promise.all([
+  const [categories, allTools, pinnedTools, prefsResult] = await Promise.all([
     getCategories(),
     getToolsWithUserOrder(),
     user ? getPinnedTools(user.id) : Promise.resolve([]),
+    user ? getUserToolPreferences() : Promise.resolve({ success: true, preferences: {} }),
   ]);
 
   // Convert to Tool[] (remove categories relation)
   const toolsForSection = allTools.map((t) => ({ ...t, categories: undefined } as Tool));
+
+  // ユーザー設定のカラーマップ
+  const colorPreferences: Record<string, ToolUserPreference> = prefsResult.preferences || {};
 
   return (
     <div className="space-y-8">
@@ -63,7 +68,7 @@ export default async function HomePage() {
       </Card>
 
       {/* ピン留めセクション */}
-      <PinnedToolsSection tools={pinnedTools as Tool[]} />
+      <PinnedToolsSection tools={pinnedTools as Tool[]} colorPreferences={colorPreferences} />
 
       {/* カテゴリショートカット */}
       <section>
@@ -76,7 +81,7 @@ export default async function HomePage() {
       </section>
 
       {/* 全ツールセクション */}
-      <AllToolsSection tools={toolsForSection} categories={categories} />
+      <AllToolsSection tools={toolsForSection} categories={categories} colorPreferences={colorPreferences} />
     </div>
   );
 }

@@ -22,15 +22,17 @@ import { CSS } from "@dnd-kit/utilities";
 import { Pin, Edit, Check, AlertCircle, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ToolTile } from "./ToolTile";
-import type { Tool } from "@/types/database";
+import type { Tool, ToolUserPreference } from "@/types/database";
+import { getEffectiveColor } from "@/types/database";
 import { savePinOrders } from "@/lib/actions/favorites";
 
 interface PinnedToolsSectionProps {
   tools: Tool[];
+  colorPreferences?: Record<string, ToolUserPreference>;
 }
 
 // ソート可能なタイル
-function SortableToolTile({ tool, editMode }: { tool: Tool; editMode: boolean }) {
+function SortableToolTile({ tool, editMode, accentColor }: { tool: Tool; editMode: boolean; accentColor?: string | null }) {
   const {
     attributes,
     listeners,
@@ -56,15 +58,15 @@ function SortableToolTile({ tool, editMode }: { tool: Tool; editMode: boolean })
         >
           <GripVertical className="w-3 h-3 text-gray-400" />
         </div>
-        <ToolTile tool={tool} disableLink />
+        <ToolTile tool={tool} disableLink accentColor={accentColor} />
       </div>
     );
   }
 
-  return <ToolTile tool={tool} />;
+  return <ToolTile tool={tool} accentColor={accentColor} />;
 }
 
-export function PinnedToolsSection({ tools: initialTools }: PinnedToolsSectionProps) {
+export function PinnedToolsSection({ tools: initialTools, colorPreferences = {} }: PinnedToolsSectionProps) {
   const router = useRouter();
   const [editMode, setEditMode] = useState(false);
   const [tools, setTools] = useState(initialTools);
@@ -156,7 +158,12 @@ export function PinnedToolsSection({ tools: initialTools }: PinnedToolsSectionPr
           <SortableContext items={tools.map((t) => t.id)} strategy={rectSortingStrategy}>
             <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
               {tools.map((tool) => (
-                <SortableToolTile key={tool.id} tool={tool} editMode={editMode} />
+                <SortableToolTile
+                  key={tool.id}
+                  tool={tool}
+                  editMode={editMode}
+                  accentColor={getEffectiveColor(colorPreferences[tool.id])}
+                />
               ))}
             </div>
           </SortableContext>

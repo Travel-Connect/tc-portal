@@ -1,8 +1,9 @@
 import { Wrench } from "lucide-react";
 import { getCategories } from "@/lib/queries/categories";
 import { createClient } from "@/lib/supabase/server";
+import { getUserToolPreferences } from "@/lib/actions/tool-preferences";
 import { ToolList } from "./ToolList";
-import type { Tool, Category } from "@/types/database";
+import type { Tool, Category, ToolUserPreference } from "@/types/database";
 
 interface ToolWithCategory extends Tool {
   categories: Category | null;
@@ -27,10 +28,13 @@ async function getAllTools(): Promise<ToolWithCategory[]> {
 }
 
 export default async function ToolsAdminPage() {
-  const [categories, tools] = await Promise.all([
+  const [categories, tools, prefsResult] = await Promise.all([
     getCategories(),
     getAllTools(),
+    getUserToolPreferences(),
   ]);
+
+  const colorPreferences: Record<string, ToolUserPreference> = prefsResult.preferences || {};
 
   return (
     <div className="space-y-6">
@@ -39,7 +43,7 @@ export default async function ToolsAdminPage() {
         <h1 className="text-2xl font-bold">ツール管理</h1>
       </div>
 
-      <ToolList initialTools={tools} categories={categories} />
+      <ToolList initialTools={tools} categories={categories} colorPreferences={colorPreferences} />
     </div>
   );
 }
