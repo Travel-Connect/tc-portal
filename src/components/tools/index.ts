@@ -7,3 +7,4 @@ export { AllToolsSection } from "./AllToolsSection";
 export { ExecuteConfirmDialog } from "./ExecuteConfirmDialog";
 export { HelperGuideBanner } from "./HelperGuideBanner";
 export { PinnedToolsSection } from "./PinnedToolsSection";
+export { ToolColorPicker } from "./ToolColorPicker";

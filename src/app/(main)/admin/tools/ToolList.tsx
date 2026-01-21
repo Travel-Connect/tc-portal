@@ -5,10 +5,11 @@ import { Plus, Pencil, Archive, ArchiveRestore, Upload } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import type { Tool, Category, IconMode, FolderSetConfig } from "@/types/database";
+import type { Tool, Category, IconMode, FolderSetConfig, ToolUserPreference } from "@/types/database";
 import { TOOL_TYPE_LABELS } from "@/types/database";
+import { getEffectiveColor } from "@/types/database";
 import { createTool, updateTool, archiveTool, uploadToolIcon } from "@/lib/actions/tools";
-import { ToolIcon } from "@/components/tools";
+import { ToolIcon, ToolColorPicker } from "@/components/tools";
 import { ToolForm, type FormState } from "./ToolForm";
 
 interface ToolWithCategory extends Tool {
@@ -18,6 +19,7 @@ interface ToolWithCategory extends Tool {
 interface ToolListProps {
   initialTools: ToolWithCategory[];
   categories: Category[];
+  colorPreferences?: Record<string, ToolUserPreference>;
 }
 
 const defaultForm: FormState = {
@@ -33,14 +35,34 @@ const defaultForm: FormState = {
   tags: [],
 };
 
-export function ToolList({ initialTools, categories }: ToolListProps) {
+export function ToolList({ initialTools, categories, colorPreferences: initialColorPrefs = {} }: ToolListProps) {
   const [tools, setTools] = useState(initialTools);
+  const [colorPreferences, setColorPreferences] = useState(initialColorPrefs);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(defaultForm);
+
+  // 色変更時のハンドラー（楽観的更新用）
+  const handleColorChange = (toolId: string, newColor: string | null) => {
+    setColorPreferences((prev) => {
+      if (newColor === null) {
+        const { [toolId]: _, ...rest } = prev;
+        return rest;
+      }
+      return {
+        ...prev,
+        [toolId]: {
+          ...prev[toolId],
+          tool_id: toolId,
+          color_hex: newColor,
+          color_preset: null,
+        } as ToolUserPreference,
+      };
+    });
+  };
 
   const filteredTools = tools.filter((t) => showArchived || !t.is_archived);
 
@@ -288,6 +310,11 @@ export function ToolList({ initialTools, categories }: ToolListProps) {
                   className={`flex items-center justify-between p-3 rounded-lg ${
                     tool.is_archived ? "bg-muted/30 opacity-60" : "bg-muted/50"
                   }`}
+                  style={
+                    getEffectiveColor(colorPreferences[tool.id])
+                      ? { backgroundColor: `${getEffectiveColor(colorPreferences[tool.id])}15` }
+                      : undefined
+                  }
                 >
                   <div className="flex items-center gap-4">
                     <div className="w-10 h-10 bg-background rounded-lg flex items-center justify-center">
@@ -311,6 +338,11 @@ export function ToolList({ initialTools, categories }: ToolListProps) {
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
+                    <ToolColorPicker
+                      toolId={tool.id}
+                      preference={colorPreferences[tool.id]}
+                      onColorChange={(color) => handleColorChange(tool.id, color)}
+                    />
                     <label className="cursor-pointer">
                       <input
                         type="file"
