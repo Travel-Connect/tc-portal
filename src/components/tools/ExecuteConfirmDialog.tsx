@@ -28,6 +28,8 @@ import { generateHelperUrl, HELPER_SUCCESS_MESSAGES } from "@/lib/helper";
 
 // localStorage key for default machine
 const STORAGE_KEY_DEFAULT_MACHINE = "tcportal.default_machine_id";
+// 自動選択を表す特別な値（空文字はRadix UIで問題が起きるため）
+const AUTO_VALUE = "auto";
 
 interface ExecuteConfirmDialogProps {
   tool: Tool;
@@ -50,7 +52,7 @@ export function ExecuteConfirmDialog({
 
   // マシン選択用の状態
   const [onlineMachines, setOnlineMachines] = useState<Pick<Machine, "id" | "name" | "hostname" | "last_seen_at">[]>([]);
-  const [selectedMachineId, setSelectedMachineId] = useState<string>("");
+  const [selectedMachineId, setSelectedMachineId] = useState<string>(AUTO_VALUE);
   const [isLoadingMachines, setIsLoadingMachines] = useState(false);
 
   // 制御モードかどうか
@@ -91,7 +93,7 @@ export function ExecuteConfirmDialog({
             if (exists) {
               setSelectedMachineId(savedMachineId);
             } else {
-              setSelectedMachineId("");
+              setSelectedMachineId(AUTO_VALUE);
             }
           }
         }
@@ -108,7 +110,7 @@ export function ExecuteConfirmDialog({
   // マシン選択時にlocalStorageに保存
   const handleMachineChange = useCallback((value: string) => {
     setSelectedMachineId(value);
-    if (value) {
+    if (value && value !== AUTO_VALUE) {
       localStorage.setItem(STORAGE_KEY_DEFAULT_MACHINE, value);
     } else {
       localStorage.removeItem(STORAGE_KEY_DEFAULT_MACHINE);
@@ -146,7 +148,8 @@ export function ExecuteConfirmDialog({
     } else {
       // Runner経由の実行: target_machine_id を渡す
       startTransition(async () => {
-        const targetMachineId = selectedMachineId || null;
+        // AUTO_VALUEまたは空の場合はnullを渡す（どのRunnerでも実行可能）
+        const targetMachineId = (selectedMachineId && selectedMachineId !== AUTO_VALUE) ? selectedMachineId : null;
         const response = await createRun(tool.id, targetMachineId);
         if (response.success) {
           setResult({ success: true, message: "実行依頼を送信しました" });
@@ -227,7 +230,7 @@ export function ExecuteConfirmDialog({
                   <SelectValue placeholder={isLoadingMachines ? "読み込み中..." : "自動（最初に拾ったRunnerが実行）"} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">自動</SelectItem>
+                  <SelectItem value={AUTO_VALUE}>自動</SelectItem>
                   {onlineMachines.map((machine) => (
                     <SelectItem key={machine.id} value={machine.id}>
                       {getMachineDisplayName(machine)}
