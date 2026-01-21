@@ -4,7 +4,7 @@
  * tcportal:// URLスキームを使用してWindows Helperでローカルアプリを起動する
  */
 
-import type { Tool, ToolType, FolderSetConfig } from "@/types/database";
+import type { Tool, ToolType, FolderSetConfig, ExcelOpenMode } from "@/types/database";
 
 // Helper対象のツールタイプ
 export const HELPER_TOOL_TYPES: ToolType[] = [
@@ -59,6 +59,9 @@ export interface HelperPayload {
   path?: string;
   paths?: string[];
   url?: string;
+  // Excel専用
+  excel_open_mode?: ExcelOpenMode;
+  excel_folder_path?: string;
 }
 
 /**
@@ -103,6 +106,37 @@ export function generateHelperUrl(tool: Tool): string | null {
     }
 
     payload = { action, paths };
+  } else if (tool.tool_type === "excel") {
+    // Excel: excel_open_modeに応じて分岐
+    const excelMode = tool.excel_open_mode || "file";
+
+    if (excelMode === "file") {
+      // 従来通り指定ファイルを開く
+      if (!tool.target) {
+        return null;
+      }
+      payload = { action, path: tool.target, excel_open_mode: excelMode };
+    } else if (excelMode === "folder_latest_created") {
+      // フォルダ内の最新ファイルを開く
+      if (!tool.excel_folder_path) {
+        return null;
+      }
+      payload = {
+        action,
+        excel_open_mode: excelMode,
+        excel_folder_path: tool.excel_folder_path,
+      };
+    } else if (excelMode === "folder_pick") {
+      // フォルダから選択して開く
+      payload = {
+        action,
+        excel_open_mode: excelMode,
+        excel_folder_path: tool.excel_folder_path || undefined,
+      };
+    } else {
+      // 不明なモードはエラー
+      return null;
+    }
   } else {
     // その他のタイプはtargetを使用
     if (!tool.target) {

@@ -31,6 +31,8 @@ const defaultForm: FormState = {
   icon_path: "",
   paths: "",
   tags: [],
+  excel_open_mode: "file",
+  excel_folder_path: "",
 };
 
 export function ToolList({ initialTools, categories }: ToolListProps) {
@@ -71,6 +73,8 @@ export function ToolList({ initialTools, categories }: ToolListProps) {
       icon_path: tool.icon_path || "",
       paths,
       tags: tool.tags || [],
+      excel_open_mode: tool.excel_open_mode || "file",
+      excel_folder_path: tool.excel_folder_path || "",
     });
     setError(null);
   };
@@ -116,6 +120,9 @@ export function ToolList({ initialTools, categories }: ToolListProps) {
         icon_key: form.icon_key || undefined,
         run_config: buildRunConfig(),
         tags: form.tags,
+        // Excel専用
+        excel_open_mode: form.excel_open_mode,
+        excel_folder_path: form.excel_folder_path || undefined,
       });
 
       if (result.success && result.id) {
@@ -169,6 +176,9 @@ export function ToolList({ initialTools, categories }: ToolListProps) {
         icon_path: iconPath || undefined,
         run_config: runConfig,
         tags: form.tags,
+        // Excel専用
+        excel_open_mode: form.excel_open_mode,
+        excel_folder_path: form.excel_folder_path || undefined,
       });
 
       if (result.success) {
@@ -188,6 +198,8 @@ export function ToolList({ initialTools, categories }: ToolListProps) {
                   run_config: runConfig,
                   tags: form.tags,
                   categories: categories.find((c) => c.id === form.category_id) || null,
+                  excel_open_mode: form.excel_open_mode,
+                  excel_folder_path: form.excel_folder_path || null,
                 }
               : t
           )

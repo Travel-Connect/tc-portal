@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import type { ToolType, IconMode, RunConfig } from "@/types/database";
+import type { ToolType, IconMode, RunConfig, ExcelOpenMode } from "@/types/database";
 import { getExecutionModeForToolType } from "@/types/database";
 
 export interface ToolFormData {
@@ -17,6 +17,9 @@ export interface ToolFormData {
   is_archived?: boolean;
   run_config?: RunConfig | null;
   tags?: string[];
+  // Excel専用
+  excel_open_mode?: ExcelOpenMode;
+  excel_folder_path?: string;
 }
 
 export async function createTool(data: ToolFormData) {
@@ -45,6 +48,9 @@ export async function createTool(data: ToolFormData) {
       is_archived: data.is_archived || false,
       run_config: data.run_config || null,
       tags: data.tags || [],
+      // Excel専用フィールド
+      excel_open_mode: data.excel_open_mode || "file",
+      excel_folder_path: data.excel_folder_path || null,
     })
     .select("id")
     .single();
@@ -91,6 +97,14 @@ export async function updateTool(id: string, data: Partial<ToolFormData>) {
   // tags が明示的に渡された場合のみ更新
   if (data.tags !== undefined) {
     updateData.tags = data.tags;
+  }
+
+  // Excel専用フィールド
+  if (data.excel_open_mode !== undefined) {
+    updateData.excel_open_mode = data.excel_open_mode;
+  }
+  if (data.excel_folder_path !== undefined) {
+    updateData.excel_folder_path = data.excel_folder_path || null;
   }
 
   const { error } = await supabase

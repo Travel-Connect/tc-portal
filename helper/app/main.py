@@ -608,6 +608,121 @@ def open_file(path: str) -> None:
     os.startfile(path)
 
 
+# =============================================================================
+# Excel Open Mode Handlers
+# =============================================================================
+
+# 対象Excel拡張子
+EXCEL_EXTENSIONS = {".xlsx", ".xls", ".xlsm"}
+
+
+def open_excel_file(path: str) -> str:
+    """
+    Excelファイルを開く（従来モード）
+
+    Returns:
+        str: 開いたファイル名（ログ用）
+    """
+    path = resolve_onedrive_path(path)
+    log(f"[Excel] Opening file: {path}")
+    os.startfile(path)
+    return os.path.basename(path)
+
+
+def open_excel_folder_latest_created(folder_path: str) -> str:
+    """
+    フォルダ内で作成日時が最新のExcelファイルを開く
+
+    Returns:
+        str: 開いたファイル名、見つからない場合は空文字列
+
+    Raises:
+        FileNotFoundError: フォルダが存在しない場合
+        ValueError: Excelファイルが見つからない場合
+    """
+    folder_path = resolve_onedrive_path(folder_path)
+    log(f"[Excel] Looking for latest Excel file in: {folder_path}")
+
+    if not os.path.isdir(folder_path):
+        raise FileNotFoundError(f"フォルダが見つかりません: {folder_path}")
+
+    # フォルダ内のExcelファイルを収集
+    excel_files: list[tuple[str, float]] = []
+    for filename in os.listdir(folder_path):
+        ext = os.path.splitext(filename)[1].lower()
+        if ext in EXCEL_EXTENSIONS:
+            filepath = os.path.join(folder_path, filename)
+            if os.path.isfile(filepath):
+                # 作成日時を取得
+                ctime = os.path.getctime(filepath)
+                excel_files.append((filepath, ctime))
+                log(f"[Excel]   Found: {filename} (ctime={ctime})")
+
+    if not excel_files:
+        raise ValueError(f"Excelファイルが見つかりません: {folder_path}")
+
+    # 作成日時でソートして最新を取得
+    excel_files.sort(key=lambda x: x[1], reverse=True)
+    latest_file = excel_files[0][0]
+    latest_name = os.path.basename(latest_file)
+
+    log(f"[Excel] Latest file: {latest_name}")
+    os.startfile(latest_file)
+    return latest_name
+
+
+def open_excel_folder_pick(initial_folder: str | None = None) -> str:
+    """
+    ファイル選択ダイアログでExcelファイルを選択して開く
+
+    Args:
+        initial_folder: 初期フォルダ（任意）
+
+    Returns:
+        str: 開いたファイル名、キャンセルされた場合は空文字列
+    """
+    import tkinter as tk
+    from tkinter import filedialog
+
+    log(f"[Excel] Opening file picker (initial_folder={initial_folder})")
+
+    # 初期フォルダを解決
+    if initial_folder:
+        initial_folder = resolve_onedrive_path(initial_folder)
+        if not os.path.isdir(initial_folder):
+            log(f"[Excel] Initial folder not found, using default")
+            initial_folder = None
+
+    # Tkinter ルートウィンドウを非表示で作成
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+
+    # ファイル選択ダイアログを表示
+    filetypes = [
+        ("Excel ファイル", "*.xlsx;*.xls;*.xlsm"),
+        ("すべてのファイル", "*.*"),
+    ]
+
+    filepath = filedialog.askopenfilename(
+        parent=root,
+        title="Excelファイルを選択",
+        initialdir=initial_folder,
+        filetypes=filetypes,
+    )
+
+    root.destroy()
+
+    if not filepath:
+        log(f"[Excel] File picker cancelled")
+        return ""
+
+    filename = os.path.basename(filepath)
+    log(f"[Excel] Selected: {filename}")
+    os.startfile(filepath)
+    return filename
+
+
 def open_folder(path: str) -> None:
     """フォルダを開く"""
     path = resolve_onedrive_path(path)
@@ -680,9 +795,33 @@ def process_payload(payload: dict[str, Any]) -> None:
     log(f"Action: {action}")
 
     if action == "open_file":
-        path = payload.get("path")
-        if path:
-            open_file(path)
+        # Excel起動モードをチェック
+        excel_open_mode = payload.get("excel_open_mode")
+
+        if excel_open_mode == "folder_latest_created":
+            # フォルダ内の最新Excelファイルを開く
+            folder_path = payload.get("excel_folder_path")
+            if folder_path:
+                try:
+                    opened_file = open_excel_folder_latest_created(folder_path)
+                    log(f"[Excel] Opened latest: {opened_file}")
+                except FileNotFoundError as e:
+                    log(f"[Excel] ERROR: {e}")
+                except ValueError as e:
+                    log(f"[Excel] ERROR: {e}")
+        elif excel_open_mode == "folder_pick":
+            # ファイル選択ダイアログを表示
+            folder_path = payload.get("excel_folder_path")
+            opened_file = open_excel_folder_pick(folder_path)
+            if opened_file:
+                log(f"[Excel] Opened selected: {opened_file}")
+            else:
+                log(f"[Excel] User cancelled file picker")
+        else:
+            # 従来モード（file）または指定なし
+            path = payload.get("path")
+            if path:
+                open_file(path)
 
     elif action == "open_folder":
         path = payload.get("path")

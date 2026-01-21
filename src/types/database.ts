@@ -21,6 +21,15 @@ export type ExecutionMode = "open" | "queue" | "helper";
 
 export type RunStatus = "queued" | "running" | "success" | "failed" | "canceled";
 
+// Excelツールの起動モード
+export type ExcelOpenMode = "file" | "folder_latest_created" | "folder_pick";
+
+export const EXCEL_OPEN_MODE_LABELS: Record<ExcelOpenMode, string> = {
+  file: "指定ファイルを開く",
+  folder_latest_created: "フォルダ内の最新ファイルを開く",
+  folder_pick: "フォルダから選択して開く",
+};
+
 // run_config の型定義
 export interface PythonRunnerConfig {
   script?: string;
@@ -66,6 +75,9 @@ export interface Tool {
   execution_mode: ExecutionMode;
   run_config: RunConfig | null;
   tags: string[];
+  // Excel専用フィールド
+  excel_open_mode: ExcelOpenMode;
+  excel_folder_path: string | null;
   created_at: string;
   updated_at: string;
 }

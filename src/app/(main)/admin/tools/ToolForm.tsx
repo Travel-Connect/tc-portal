@@ -17,8 +17,8 @@ import {
 import { TagInput } from "@/components/ui/tag-input";
 import { ToolIcon } from "@/components/tools";
 import { getToolIconUrl } from "@/lib/supabase/storage";
-import type { Category, ToolType, IconMode } from "@/types/database";
-import { TOOL_TYPE_OPTIONS } from "@/types/database";
+import type { Category, ToolType, IconMode, ExcelOpenMode } from "@/types/database";
+import { TOOL_TYPE_OPTIONS, EXCEL_OPEN_MODE_LABELS } from "@/types/database";
 
 export interface FormState {
   name: string;
@@ -32,6 +32,9 @@ export interface FormState {
   paths: string; // folder_set用: 1行1パス
   tags: string[];
   pendingIconFile?: File | null;
+  // Excel専用
+  excel_open_mode: ExcelOpenMode;
+  excel_folder_path: string;
 }
 
 interface ToolFormProps {
@@ -219,6 +222,62 @@ export function ToolForm({
             <p className="text-xs text-muted-foreground">
               複数のフォルダを同時に開きます。1行に1つのパスを入力してください。
             </p>
+          </div>
+        )}
+        {form.tool_type === "excel" && (
+          <div className="space-y-4 p-4 bg-muted/30 rounded-lg">
+            <div className="space-y-2">
+              <Label>Excel起動モード</Label>
+              <Select
+                value={form.excel_open_mode}
+                onValueChange={(v) => setForm({ ...form, excel_open_mode: v as ExcelOpenMode })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(EXCEL_OPEN_MODE_LABELS) as ExcelOpenMode[]).map((mode) => (
+                    <SelectItem key={mode} value={mode}>
+                      {EXCEL_OPEN_MODE_LABELS[mode]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {form.excel_open_mode === "file" && (
+              <div className="space-y-2">
+                <Label htmlFor="target">Excelファイルパス</Label>
+                <Input
+                  id="target"
+                  value={form.target}
+                  onChange={(e) => setForm({ ...form, target: e.target.value })}
+                  placeholder="C:\Users\Documents\Book1.xlsx"
+                  className="font-mono text-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                  開くExcelファイルのフルパスを指定します。
+                </p>
+              </div>
+            )}
+            {(form.excel_open_mode === "folder_latest_created" || form.excel_open_mode === "folder_pick") && (
+              <div className="space-y-2">
+                <Label htmlFor="excel_folder_path">
+                  {form.excel_open_mode === "folder_latest_created" ? "対象フォルダ" : "初期フォルダ（任意）"}
+                </Label>
+                <Input
+                  id="excel_folder_path"
+                  value={form.excel_folder_path}
+                  onChange={(e) => setForm({ ...form, excel_folder_path: e.target.value })}
+                  placeholder="C:\Users\Documents\Reports"
+                  className="font-mono text-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {form.excel_open_mode === "folder_latest_created"
+                    ? "このフォルダ内で作成日時が最新の Excel ファイル（.xlsx/.xls/.xlsm）を開きます。"
+                    : "ファイル選択ダイアログの初期フォルダ。空の場合は既定フォルダが使用されます。"}
+                </p>
+              </div>
+            )}
           </div>
         )}
         <div className="space-y-2">
