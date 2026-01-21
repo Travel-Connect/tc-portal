@@ -54,6 +54,49 @@ python agent.py
 | `pad_exe` | PAD実行ファイル | `C:\Program Files (x86)\Power Automate Desktop\PAD.Console.Host.exe` |
 | `log_dir` | ログ出力先 | `C:\TcPortalLogs` |
 
+### PC別設定ファイル
+
+複数PCでRunnerを運用する場合、PC名ごとの設定ファイルを使用できます:
+
+- `config-{COMPUTERNAME}.json` が優先的に読み込まれる
+- 存在しない場合は `config.json` にフォールバック
+- 例: `config-DESKTOP-MH86LUK.json`, `config-KAMIZATO-PC.json`
+
+これにより、OneDrive同期フォルダにRunnerを配置しても各PCで別々のマシンキーを使用できます。
+
+### 複数Runner運用（実行先マシン指定）
+
+複数のPCでRunnerを起動している場合、PAD/Python実行時に実行先マシンを指定できます。
+
+#### 仕組み
+
+1. **Heartbeat**: 各Runnerは定期的に `/api/runner/heartbeat` を呼び出し、オンライン状態を通知
+2. **マシン選択UI**: 実行確認ダイアログでオンラインのRunnerを選択可能
+3. **target_machine_id**: 選択されたマシンのみがそのrunをclaim可能
+
+#### 設定ファイルの追加項目
+
+| キー | 説明 | デフォルト |
+|------|------|-----------|
+| `heartbeat_interval_sec` | ハートビート送信間隔（秒） | `30` |
+
+#### 動作
+
+1. Runnerは起動時と `heartbeat_interval_sec` 間隔でハートビートを送信
+2. ハートビートにより `machines.last_seen_at` と `machines.hostname` が更新
+3. ポータルUIは `last_seen_at` が2分以内のマシンを「オンライン」と判定
+4. ユーザーが実行先マシンを選択すると、`runs.target_machine_id` に保存
+5. 選択されたマシンのRunnerのみがそのrunをclaimできる
+6. 「自動」を選択した場合は `target_machine_id = NULL` となり、どのRunnerでもclaim可能
+
+#### localStorage による選択記憶
+
+実行先マシンの選択は `localStorage` に保存されます:
+
+- キー: `tcportal.default_machine_id`
+- PC別のブラウザで異なるデフォルトを設定可能
+- オフラインのマシンが保存されていた場合は「自動」にリセット
+
 ---
 
 ## 2. Windows Helper（tcportal://プロトコル）

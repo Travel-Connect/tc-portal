@@ -8,9 +8,13 @@ import { HELPER_SUCCESS_MESSAGES } from "@/lib/helper";
 /**
  * 実行依頼を作成する
  * @param toolId ツールID
+ * @param targetMachineId 実行先マシンID（NULLなら任意のRunnerが実行可能）
  * @returns 作成結果
  */
-export async function createRun(toolId: string): Promise<{
+export async function createRun(
+  toolId: string,
+  targetMachineId?: string | null
+): Promise<{
   success: boolean;
   runId?: string;
   error?: string;
@@ -44,7 +48,7 @@ export async function createRun(toolId: string): Promise<{
   const runTokenHash = createHash("sha256").update(runToken).digest("hex");
 
   // runs に挿入
-  console.log("[createRun] Creating run for tool:", toolId, "user:", user.id);
+  console.log("[createRun] Creating run for tool:", toolId, "user:", user.id, "targetMachine:", targetMachineId || "auto");
 
   const { data: run, error: insertError } = await supabase
     .from("runs")
@@ -53,6 +57,7 @@ export async function createRun(toolId: string): Promise<{
       requested_by: user.id,
       status: "queued",
       run_token_hash: runTokenHash,
+      target_machine_id: targetMachineId || null,
     })
     .select("id")
     .single();

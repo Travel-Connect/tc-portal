@@ -91,6 +91,178 @@ def expand_env_vars(path: str) -> str:
     return os.path.expandvars(path)
 
 
+# =============================================================================
+# OneDrive Path Resolution
+# =============================================================================
+
+# 会社OneDriveフォルダ名（固定）
+ORG_ONEDRIVE_FOLDER = "OneDrive - トラベルコネクト"
+
+# キャッシュ（一度検出したら再利用）
+_org_onedrive_root_cache: str | None = None
+
+
+def detect_org_onedrive_root() -> str | None:
+    """
+    会社OneDrive（"OneDrive - トラベルコネクト"）のルートパスを自動検出
+
+    検出順序:
+    1. 環境変数 OneDriveCommercial
+    2. 環境変数 OneDrive（それ自体、または配下）
+    3. 環境変数 OneDrive* (複数アカウント対策)
+    4. レジストリ HKCU\Software\Microsoft\OneDrive\Accounts\Business*
+
+    Returns:
+        str | None: 検出されたルートパス、見つからない場合はNone
+    """
+    global _org_onedrive_root_cache
+
+    if _org_onedrive_root_cache is not None:
+        return _org_onedrive_root_cache
+
+    candidates: list[str] = []
+
+    # === 1. 環境変数から候補を収集 ===
+
+    # OneDriveCommercial を最優先
+    commercial = os.environ.get("OneDriveCommercial", "")
+    if commercial:
+        candidates.append(commercial)
+        # 配下も候補
+        candidates.append(os.path.join(commercial, ORG_ONEDRIVE_FOLDER))
+
+    # OneDrive 環境変数
+    onedrive = os.environ.get("OneDrive", "")
+    if onedrive:
+        candidates.append(onedrive)
+        candidates.append(os.path.join(onedrive, ORG_ONEDRIVE_FOLDER))
+
+    # OneDrive で始まる全ての環境変数（複数アカウント対策）
+    for key, value in os.environ.items():
+        if key.startswith("OneDrive") and value:
+            candidates.append(value)
+            candidates.append(os.path.join(value, ORG_ONEDRIVE_FOLDER))
+
+    # === 2. レジストリから候補を収集 ===
+    try:
+        import winreg
+
+        # Business1, Business2, Business3... を順に探索
+        for i in range(1, 10):
+            try:
+                key_path = rf"Software\Microsoft\OneDrive\Accounts\Business{i}"
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+                    user_folder, _ = winreg.QueryValueEx(key, "UserFolder")
+                    if user_folder:
+                        candidates.append(user_folder)
+                        candidates.append(os.path.join(user_folder, ORG_ONEDRIVE_FOLDER))
+            except (FileNotFoundError, OSError):
+                # このBusinessNは存在しない
+                continue
+    except ImportError:
+        log("[OneDrive] winreg not available")
+    except Exception as e:
+        log(f"[OneDrive] Registry read error: {e}")
+
+    # === 3. 候補を検証 ===
+    log(f"[OneDrive] Checking {len(candidates)} candidates...")
+
+    for candidate in candidates:
+        if not candidate:
+            continue
+
+        # パスの末尾が "OneDrive - トラベルコネクト" で終わり、実在するか
+        if candidate.endswith(ORG_ONEDRIVE_FOLDER) and os.path.isdir(candidate):
+            log(f"[OneDrive] FOUND org root: {candidate}")
+            _org_onedrive_root_cache = candidate
+            return candidate
+
+    log("[OneDrive] No org OneDrive root found")
+    return None
+
+
+def resolve_onedrive_path(path: str) -> str:
+    """
+    OneDriveパスを実行端末の実在するパスに解決
+
+    処理:
+    1. 環境変数を展開
+    2. パスが存在すればそのまま返す
+    3. "\\OneDrive - トラベルコネクト\\" を含む場合、検出したルートで置換
+    4. 解決できない場合は元のパスを返す（警告ログ）
+
+    Args:
+        path: 入力パス
+
+    Returns:
+        str: 解決されたパス
+    """
+    if not path:
+        return path
+
+    # 環境変数を展開
+    expanded = os.path.expandvars(path)
+
+    # パスが存在すればそのまま返す
+    if os.path.exists(expanded):
+        return expanded
+
+    # OneDrive パスを含むかチェック
+    marker = f"\\{ORG_ONEDRIVE_FOLDER}\\"
+    marker_lower = marker.lower()
+    path_lower = expanded.lower()
+
+    if marker_lower not in path_lower:
+        # OneDriveパスではない
+        return expanded
+
+    # 会社OneDriveルートを検出
+    org_root = detect_org_onedrive_root()
+    if not org_root:
+        log(f"[OneDrive] WARNING: Cannot resolve path (no org root detected): {expanded}")
+        return expanded
+
+    # マーカー位置を特定（大文字小文字を無視）
+    marker_pos = path_lower.find(marker_lower)
+    if marker_pos == -1:
+        return expanded
+
+    # マーカーより後ろの部分（相対パス）を抽出
+    # marker_pos + len(marker) - 1 で "\" の位置の次から
+    suffix_start = marker_pos + len(marker) - 1  # 最後の "\" を含む
+    suffix = expanded[suffix_start:]
+
+    # 新しいパスを組み立て
+    resolved = org_root + suffix
+
+    # 解決されたパスが存在するか確認
+    if os.path.exists(resolved):
+        log(f"[OneDrive] Resolved path:")
+        log(f"[OneDrive]   original: {path}")
+        log(f"[OneDrive]   resolved: {resolved}")
+        log(f"[OneDrive]   org_root: {org_root}")
+        return resolved
+    else:
+        log(f"[OneDrive] WARNING: Resolved path does not exist:")
+        log(f"[OneDrive]   original: {path}")
+        log(f"[OneDrive]   resolved: {resolved}")
+        log(f"[OneDrive]   org_root: {org_root}")
+        return resolved  # 存在しなくても解決を試みたパスを返す
+
+
+def resolve_paths(paths: list[str]) -> list[str]:
+    """
+    複数のパスを解決（folder_set用）
+
+    Args:
+        paths: パスのリスト
+
+    Returns:
+        list[str]: 解決されたパスのリスト
+    """
+    return [resolve_onedrive_path(p) for p in paths]
+
+
 def parse_payload(payload_b64: str) -> dict[str, Any]:
     """Base64URLエンコードされたpayloadをパース"""
     try:
@@ -312,7 +484,7 @@ def open_folders_in_tabs(paths: list[str], config: dict) -> tuple[int, int]:
     tab_create_wait = config.get("tab_create_wait_ms", 500) / 1000.0
 
     # === 1. 最初のフォルダを新規Explorerウィンドウで開く ===
-    first_path = expand_env_vars(paths[0])
+    first_path = resolve_onedrive_path(paths[0])
     log(f"[TAB] Opening first folder: {first_path}")
 
     try:
@@ -332,7 +504,7 @@ def open_folders_in_tabs(paths: list[str], config: dict) -> tuple[int, int]:
             pass
         # 残りもフォールバック
         for p in paths[1:]:
-            p = expand_env_vars(p)
+            p = resolve_onedrive_path(p)
             try:
                 os.startfile(p)
                 windows_fallback += 1
@@ -342,7 +514,7 @@ def open_folders_in_tabs(paths: list[str], config: dict) -> tuple[int, int]:
 
     # === 2. 残りのフォルダをタブで開く ===
     for idx, path in enumerate(paths[1:], start=2):
-        path = expand_env_vars(path)
+        path = resolve_onedrive_path(path)
         log(f"")
         log(f"[TAB] === Processing folder #{idx}: {path} ===")
 
@@ -415,7 +587,7 @@ def open_folders_in_windows(paths: list[str]) -> int:
     """複数フォルダを別ウィンドウで開く（従来方式）"""
     count = 0
     for path in paths:
-        path = expand_env_vars(path)
+        path = resolve_onedrive_path(path)
         try:
             os.startfile(path)
             count += 1
@@ -431,14 +603,14 @@ def open_folders_in_windows(paths: list[str]) -> int:
 
 def open_file(path: str) -> None:
     """ファイルを開く"""
-    path = expand_env_vars(path)
+    path = resolve_onedrive_path(path)
     log(f"Opening file: {path}")
     os.startfile(path)
 
 
 def open_folder(path: str) -> None:
     """フォルダを開く"""
-    path = expand_env_vars(path)
+    path = resolve_onedrive_path(path)
     log(f"Opening folder: {path}")
     os.startfile(path)
 
@@ -472,21 +644,21 @@ def open_folders(paths: list[str]) -> None:
 
 def run_exe(path: str) -> None:
     """EXEを実行"""
-    path = expand_env_vars(path)
+    path = resolve_onedrive_path(path)
     log(f"Running EXE: {path}")
     subprocess.Popen([path], creationflags=subprocess.CREATE_NEW_CONSOLE)
 
 
 def run_bat(path: str) -> None:
     """BATファイルを実行"""
-    path = expand_env_vars(path)
+    path = resolve_onedrive_path(path)
     log(f"Running BAT: {path}")
     subprocess.Popen(["cmd", "/c", path], creationflags=subprocess.CREATE_NEW_CONSOLE)
 
 
 def open_shortcut(path: str) -> None:
     """ショートカットを実行"""
-    path = expand_env_vars(path)
+    path = resolve_onedrive_path(path)
     log(f"Opening shortcut: {path}")
     os.startfile(path)
 

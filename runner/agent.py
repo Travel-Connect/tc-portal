@@ -28,10 +28,28 @@ except ImportError:
 
 
 def load_config() -> dict[str, Any]:
-    """設定ファイルを読み込む"""
-    config_path = Path(__file__).parent / "config.json"
-    if not config_path.exists():
-        print("Error: config.json not found. Copy config.example.json to config.json and edit it.")
+    """設定ファイルを読み込む
+
+    PC名ごとの設定ファイル（config-{COMPUTERNAME}.json）を優先的に読み込む。
+    存在しない場合は config.json にフォールバック。
+    """
+    base_dir = Path(__file__).parent
+    computer_name = os.environ.get("COMPUTERNAME", "").upper()
+
+    # PC名ごとの設定ファイルを優先
+    pc_config_path = base_dir / f"config-{computer_name}.json"
+    generic_config_path = base_dir / "config.json"
+
+    if pc_config_path.exists():
+        config_path = pc_config_path
+        print(f"Using PC-specific config: {pc_config_path.name}")
+    elif generic_config_path.exists():
+        config_path = generic_config_path
+        print(f"Using generic config: {generic_config_path.name}")
+    else:
+        print(f"Error: Config file not found.")
+        print(f"  Expected: {pc_config_path.name} or config.json")
+        print(f"  Copy config.example.json to config.json and edit it.")
         sys.exit(1)
 
     with open(config_path, "r", encoding="utf-8") as f:
@@ -42,6 +60,29 @@ def log(message: str) -> None:
     """タイムスタンプ付きでログを出力"""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{timestamp}] {message}")
+
+
+def send_heartbeat(config: dict[str, Any]) -> bool:
+    """ハートビートを送信してオンライン状態を通知"""
+    url = f"{config['portal_url']}/api/runner/heartbeat"
+    headers = {
+        "X-Machine-Key": config["machine_key"],
+        "Content-Type": "application/json",
+    }
+    # PC名（COMPUTERNAME）をhostnameとして送信
+    hostname = os.environ.get("COMPUTERNAME", "")
+    payload = {"hostname": hostname}
+
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        if response.status_code == 200:
+            return True
+        else:
+            log(f"Heartbeat failed: {response.status_code} - {response.text[:100]}")
+            return False
+    except requests.RequestException as e:
+        log(f"Heartbeat error: {e}")
+        return False
 
 
 def claim_task(config: dict[str, Any]) -> Optional[dict[str, Any]]:
@@ -679,12 +720,30 @@ def main() -> None:
 
     config = load_config()
     poll_interval = config.get("poll_interval_sec", 10)
+    heartbeat_interval = config.get("heartbeat_interval_sec", 30)  # デフォルト30秒
 
     log(f"Portal URL: {config['portal_url']}")
     log(f"Poll interval: {poll_interval} seconds")
+    log(f"Heartbeat interval: {heartbeat_interval} seconds")
+
+    # 起動時にハートビートを送信
+    hostname = os.environ.get("COMPUTERNAME", "unknown")
+    log(f"Hostname: {hostname}")
+    if send_heartbeat(config):
+        log("Initial heartbeat sent successfully")
+    else:
+        log("Warning: Initial heartbeat failed")
+
+    last_heartbeat = time.time()
 
     while True:
         try:
+            # 定期的にハートビートを送信
+            now = time.time()
+            if now - last_heartbeat >= heartbeat_interval:
+                send_heartbeat(config)
+                last_heartbeat = now
+
             task = claim_task(config)
             if task:
                 process_task(task, config)

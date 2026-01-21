@@ -29,38 +29,37 @@ TC PortalのHelper（tcportal://プロトコル）とRunner（queueベースの�
 
 ---
 
-## B) Helper導入手順
+## B) Helper導入手順（共有配布版）
 
-### 1. Helper実行ファイルの配置
+Helperは OneDrive の共有フォルダで配布されています。
 
-Helperは2つの方法で配置できます:
-
-**方法A: OneDrive共有（推奨）**
+### フォルダ構成
 ```
 OneDrive - トラベルコネクト\
-  └─ tc-portal-helper\
-       ├─ tcportal-helper.exe
-       └─ config.json（あれば）
+  └─ 014.ポータルサイト\
+       ├─ tcportal-helper.exe   ← 本体
+       ├─ install.ps1           ← インストーラー
+       └─ README.txt            ← 説明書
 ```
 
-**方法B: 各PCにビルド**
-```powershell
-cd helper
-.\build.ps1
-# dist\tcportal-helper.exe が生成される
-```
+### 1. URLスキーム登録
 
-### 2. URLスキーム登録
+OneDriveが同期されていることを確認し、以下を実行:
 
 ```powershell
-# helperフォルダで実行
-.\install-protocol.ps1
+# ポータルサイトフォルダに移動
+cd "$env:OneDrive\..\OneDrive - トラベルコネクト\014.ポータルサイト"
 
-# または、OneDrive共有の場合
-& "C:\Users\<user>\OneDrive - トラベルコネクト\tc-portal-helper\install-protocol.ps1"
+# または直接パスを指定（Cドライブの場合）
+cd "C:\Users\$env:USERNAME\OneDrive - トラベルコネクト\014.ポータルサイト"
+
+# インストール実行
+.\install.ps1
 ```
 
-### 3. 登録確認
+**簡単な方法**: `install.ps1` を右クリック →「PowerShellで実行」
+
+### 2. 登録確認
 
 以下のコマンドで`tcportal://`プロトコルが登録されているか確認:
 
@@ -69,15 +68,10 @@ cd helper
 Get-ItemProperty -Path "HKCU:\Software\Classes\tcportal\shell\open\command" -ErrorAction SilentlyContinue
 
 # 期待される出力例:
-# (Default) : "C:\...\tcportal-helper.exe" "%1"
+# (Default) : "C:\...\014.ポータルサイト\tcportal-helper.exe" "%1"
 ```
 
-または、スモークスクリプトを実行:
-```powershell
-.\scripts\smoke\collect-env.ps1
-```
-
-### 4. 手動テスト
+### 3. 手動テスト
 
 ブラウザで以下のURLを開く:
 ```
@@ -86,22 +80,51 @@ tcportal://open?payload=eyJhY3Rpb24iOiJvcGVuX2ZvbGRlciIsInBhdGgiOiJDOlxcVXNlcnMi
 
 **成功条件**: `C:\Users` フォルダがエクスプローラーで開く
 
+### 4. ログの確認
+
+Helperのログは実行ファイルと同じフォルダに出力されます:
+- `tcportal-helper.log` - 一般ログ
+- `tcportal-helper-<PC名>.log` - PC別ログ
+
 ---
 
-## C) Runner導入手順
+## C) Runner導入手順（共有配布版）
+
+RunnerもOneDriveの共有フォルダで配布されています。
+
+### フォルダ構成
+```
+OneDrive - トラベルコネクト\
+  └─ 014.ポータルサイト\
+       └─ runner\
+            ├─ agent.py              ← 本体
+            ├─ requirements.txt      ← Python依存関係
+            ├─ config.example.json   ← 設定テンプレート
+            ├─ config-{PC名}.json    ← PC別設定（自動生成）
+            ├─ install.ps1           ← インストーラー
+            └─ README.txt            ← 説明書
+```
+
+> **注意**: `config-{PC名}.json`はPC名ごとに自動生成されます。
+> OneDrive同期でも他のPCの設定と干渉しません。
 
 ### 1. Python環境の準備
 
+**事前条件**: Python 3.10以上がインストールされていること
+
 ```powershell
-cd runner
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
+# ポータルサイトフォルダに移動
+cd "C:\Users\$env:USERNAME\OneDrive - トラベルコネクト\014.ポータルサイト\runner"
+
+# インストール実行（仮想環境作成＋依存関係インストール）
+.\install.ps1
 ```
+
+**簡単な方法**: `install.ps1` を右クリック →「PowerShellで実行」
 
 ### 2. マシンキーの取得・登録
 
-1. Supabaseの`machines`テーブルで新しいマシンを登録
+1. Supabaseの`machin`テーブルで新しいマシンを登録
 2. マシンキーのハッシュを生成:
    ```python
    import hashlib
@@ -110,34 +133,43 @@ pip install -r requirements.txt
    ```
 3. ハッシュを`machines.key_hash`に保存
 
-### 3. 設定ファイルの作成
+### 3. 設定ファイルの編集
 
-```powershell
-copy config.example.json config.json
-```
+`install.ps1`実行後、**PC名ごとの設定ファイル**が自動生成されます:
+- 例: `config-KAMIZATO-PC.json`
 
-`config.json`を編集:
+> **ポイント**: PC名ごとにファイルが分かれるので、OneDrive同期でも他のPCの設定と干渉しません。
+
+編集してマシンキーを設定:
 ```json
 {
   "portal_url": "https://tc-portal.vercel.app",
   "machine_key": "your-machine-key",
-  "poll_interval_sec": 5,
-  "execution_timeout": 300,
-  "python_exe": "C:\\Python312\\python.exe",
-  "scripts_base_path": "C:\\Users\\<user>\\OneDrive - トラベルコネクト\\scripts",
-  "pad_exe": "C:\\Program Files (x86)\\Power Automate Desktop\\PAD.Console.Host.exe"
+  "poll_interval_sec": 10,
+  "execution_timeout": 3600,
+  "python_exe": "python",
+  "scripts_base_path": "C:\\Scripts",
+  "pad_exe": "C:\\Program Files (x86)\\Power Automate Desktop\\PAD.Console.Host.exe",
+  "log_dir": "C:\\TcPortalLogs"
 }
 ```
 
-### 4. Runnerの起動
+
 
 ```powershell
-.venv\Scripts\activate
-python agent.py
+# start-runner.bat をダブルクリック
+# または PowerShell で:
+cd "C:\Users\$env:USERNAME\OneDrive - トラベルコネクト\014.ポータルサイト\runner"
+.\.venv\Scripts\python.exe agent.py
 ```
 
 **起動成功の確認**:
-- コンソールに「Polling for tasks...」などのログが表示される
+- コンソールに以下が表示される:
+  ```
+  [2026-01-20 16:00:00] TC Portal Runner Agent starting...
+  [2026-01-20 16:00:00] Portal URL: https://tc-portal.vercel.app
+  [2026-01-20 16:00:00] Poll interval: 10 seconds
+  ```
 - エラーがなければOK
 
 ---
@@ -264,7 +296,7 @@ python agent.py
    ```powershell
    Get-ItemProperty -Path "HKCU:\Software\Classes\tcportal" -ErrorAction SilentlyContinue
    ```
-2. `install-protocol.ps1`を再実行
+2. `install.ps1`を再実行（`014.ポータルサイト`フォルダ内）
 3. ブラウザを再起動
 4. ブラウザの「外部プロトコルを開く」設定を確認
 

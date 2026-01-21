@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition, useEffect, useCallback } from "react";
-import { Play, Loader2, ExternalLink } from "lucide-react";
+import { Play, Loader2, ExternalLink, Monitor } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,10 +12,22 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import type { Tool } from "@/types/database";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import type { Tool, Machine } from "@/types/database";
 import { TOOL_TYPE_LABELS } from "@/types/database";
 import { createRun, createHelperRun } from "@/lib/actions/runs";
+import { getOnlineMachines } from "@/lib/actions/machines";
 import { generateHelperUrl, HELPER_SUCCESS_MESSAGES } from "@/lib/helper";
+
+// localStorage key for default machine
+const STORAGE_KEY_DEFAULT_MACHINE = "tcportal.default_machine_id";
 
 interface ExecuteConfirmDialogProps {
   tool: Tool;
@@ -36,6 +48,11 @@ export function ExecuteConfirmDialog({
   const [isPending, startTransition] = useTransition();
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
 
+  // マシン選択用の状態
+  const [onlineMachines, setOnlineMachines] = useState<Pick<Machine, "id" | "name" | "hostname" | "last_seen_at">[]>([]);
+  const [selectedMachineId, setSelectedMachineId] = useState<string>("");
+  const [isLoadingMachines, setIsLoadingMachines] = useState(false);
+
   // 制御モードかどうか
   const isControlled = controlledOpen !== undefined;
   const open = isControlled ? controlledOpen : internalOpen;
@@ -53,6 +70,50 @@ export function ExecuteConfirmDialog({
 
   // execution_mode で判定（tool_type ではなく execution_mode を正とする）
   const isHelper = tool.execution_mode === "helper";
+  const isQueue = tool.execution_mode === "queue";
+
+  // ダイアログが開いたときにマシン一覧を取得（queue実行のみ）
+  useEffect(() => {
+    if (!open || !isQueue) return;
+
+    const fetchMachines = async () => {
+      setIsLoadingMachines(true);
+      try {
+        const response = await getOnlineMachines();
+        if (response.success && response.machines) {
+          setOnlineMachines(response.machines);
+
+          // localStorageからデフォルトマシンを復元
+          const savedMachineId = localStorage.getItem(STORAGE_KEY_DEFAULT_MACHINE);
+          if (savedMachineId) {
+            // 保存されたマシンがオンライン一覧に含まれる場合のみ設定
+            const exists = response.machines.some(m => m.id === savedMachineId);
+            if (exists) {
+              setSelectedMachineId(savedMachineId);
+            } else {
+              setSelectedMachineId("");
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch machines:", error);
+      } finally {
+        setIsLoadingMachines(false);
+      }
+    };
+
+    fetchMachines();
+  }, [open, isQueue]);
+
+  // マシン選択時にlocalStorageに保存
+  const handleMachineChange = useCallback((value: string) => {
+    setSelectedMachineId(value);
+    if (value) {
+      localStorage.setItem(STORAGE_KEY_DEFAULT_MACHINE, value);
+    } else {
+      localStorage.removeItem(STORAGE_KEY_DEFAULT_MACHINE);
+    }
+  }, []);
 
   const handleExecute = useCallback(() => {
     setResult(null);
@@ -83,9 +144,10 @@ export function ExecuteConfirmDialog({
         setOpen(false);
       }, 1000);
     } else {
-      // Runner経由の実行: 従来通り
+      // Runner経由の実行: target_machine_id を渡す
       startTransition(async () => {
-        const response = await createRun(tool.id);
+        const targetMachineId = selectedMachineId || null;
+        const response = await createRun(tool.id, targetMachineId);
         if (response.success) {
           setResult({ success: true, message: "実行依頼を送信しました" });
           // 成功後1秒でダイアログを閉じる
@@ -97,7 +159,7 @@ export function ExecuteConfirmDialog({
         }
       });
     }
-  }, [isHelper, tool, setOpen]);
+  }, [isHelper, tool, setOpen, selectedMachineId]);
 
   // Enterキーで実行
   useEffect(() => {
@@ -114,6 +176,14 @@ export function ExecuteConfirmDialog({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [open, isPending, result?.success, handleExecute]);
 
+  // マシン表示名を生成
+  const getMachineDisplayName = (machine: Pick<Machine, "id" | "name" | "hostname">) => {
+    if (machine.hostname && machine.hostname !== machine.name) {
+      return `${machine.name} (${machine.hostname})`;
+    }
+    return machine.name;
+  };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -128,7 +198,7 @@ export function ExecuteConfirmDialog({
               : "以下のツールを実行しますか？"}
           </DialogDescription>
         </DialogHeader>
-        <div className="py-4">
+        <div className="py-4 space-y-4">
           <div className="bg-muted rounded-lg p-4">
             <p className="font-medium">{tool.name}</p>
             <p className="text-sm text-muted-foreground mt-1">
@@ -140,13 +210,46 @@ export function ExecuteConfirmDialog({
               </p>
             )}
           </div>
+
+          {/* Queue実行時のマシン選択 */}
+          {isQueue && (
+            <div className="space-y-2">
+              <Label htmlFor="machine-select" className="flex items-center gap-2">
+                <Monitor className="w-4 h-4" />
+                実行先PC（Runner）
+              </Label>
+              <Select
+                value={selectedMachineId}
+                onValueChange={handleMachineChange}
+                disabled={isLoadingMachines}
+              >
+                <SelectTrigger id="machine-select">
+                  <SelectValue placeholder={isLoadingMachines ? "読み込み中..." : "自動（最初に拾ったRunnerが実行）"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">自動</SelectItem>
+                  {onlineMachines.map((machine) => (
+                    <SelectItem key={machine.id} value={machine.id}>
+                      {getMachineDisplayName(machine)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {onlineMachines.length === 0 && !isLoadingMachines && (
+                <p className="text-xs text-muted-foreground">
+                  オンラインのRunnerがありません。「自動」で実行すると、次にオンラインになったRunnerが実行します。
+                </p>
+              )}
+            </div>
+          )}
+
           {isHelper && (
-            <p className="text-xs text-muted-foreground mt-3">
+            <p className="text-xs text-muted-foreground">
               ※ TC Portal Helperが必要です。インストールされていない場合は起動できません。
             </p>
           )}
           {result && (
-            <div className={`mt-4 p-3 rounded-lg ${result.success ? "bg-green-50 text-green-800 dark:bg-green-950 dark:text-green-200" : "bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-200"}`}>
+            <div className={`p-3 rounded-lg ${result.success ? "bg-green-50 text-green-800 dark:bg-green-950 dark:text-green-200" : "bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-200"}`}>
               {result.message}
             </div>
           )}

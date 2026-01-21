@@ -197,7 +197,7 @@ if (Test-Path $protocolPath) {
     }
 } else {
     Write-Log "Protocol Key: NOT REGISTERED"
-    Write-Log "  -> Run install-protocol.ps1 to register"
+    Write-Log "  -> Run install.ps1 in 014.ポータルサイト folder to register"
 }
 
 # --------------------------------------------------
@@ -207,16 +207,20 @@ Write-Section "4. Helper Files"
 
 # 基本パス
 $helperPaths = @(
+    # 開発環境
     (Join-Path $projectRoot "helper\dist\tcportal-helper.exe"),
     (Join-Path $projectRoot "helper\dist-shared\tcportal-helper.exe"),
-    "$env:USERPROFILE\OneDrive - トラベルコネクト\tc-portal-helper\tcportal-helper.exe"
+    # 共有配布版（標準パス）
+    "$env:USERPROFILE\OneDrive - トラベルコネクト\014.ポータルサイト\tcportal-helper.exe"
 )
 
 # 発見したOneDriveパスからもHelper検索
 foreach ($oneDrivePath in $foundOneDrivePaths) {
+    # 共有配布版（014.ポータルサイト直下）
+    $helperPaths += Join-Path $oneDrivePath "014.ポータルサイト\tcportal-helper.exe"
+    # 旧構成（互換性のため）
     $helperPaths += Join-Path $oneDrivePath "tc-portal-helper\tcportal-helper.exe"
     $helperPaths += Join-Path $oneDrivePath "014.ポータルサイト\helper\dist\tcportal-helper.exe"
-    $helperPaths += Join-Path $oneDrivePath "014.ポータルサイト\helper\dist-shared\tcportal-helper.exe"
 }
 
 # 重複を除去
@@ -255,13 +259,42 @@ foreach ($path in $helperConfigPaths) {
 # --------------------------------------------------
 Write-Section "5. Runner Files"
 
+# 開発環境のパス
 $runnerAgentPath = Join-Path $projectRoot "runner\agent.py"
 $runnerConfigPath = Join-Path $projectRoot "runner\config.json"
 $runnerVenvPath = Join-Path $projectRoot "runner\.venv"
 
-Write-Log "Runner Agent: $(if (Test-Path $runnerAgentPath) { 'EXISTS' } else { 'NOT FOUND' })"
-Write-Log "Runner Config: $(if (Test-Path $runnerConfigPath) { 'EXISTS' } else { 'NOT FOUND' })"
-Write-Log "Runner Venv: $(if (Test-Path $runnerVenvPath) { 'EXISTS' } else { 'NOT FOUND' })"
+Write-Log "Development Runner:"
+Write-Log "  Agent: $(if (Test-Path $runnerAgentPath) { 'EXISTS' } else { 'NOT FOUND' })"
+Write-Log "  Config: $(if (Test-Path $runnerConfigPath) { 'EXISTS' } else { 'NOT FOUND' })"
+Write-Log "  Venv: $(if (Test-Path $runnerVenvPath) { 'EXISTS' } else { 'NOT FOUND' })"
+
+# 共有配布版のパス検索
+Write-Log ""
+Write-Log "Shared Runner (OneDrive):"
+$sharedRunnerFound = $false
+foreach ($oneDrivePath in $foundOneDrivePaths) {
+    $sharedRunnerPath = Join-Path $oneDrivePath "014.ポータルサイト\runner"
+    if (Test-Path $sharedRunnerPath) {
+        $sharedRunnerFound = $true
+        $sharedAgentPath = Join-Path $sharedRunnerPath "agent.py"
+        $sharedConfigPath = Join-Path $sharedRunnerPath "config.json"
+        $sharedVenvPath = Join-Path $sharedRunnerPath ".venv"
+
+        Write-Log "  [FOUND] $sharedRunnerPath"
+        Write-Log "    Agent: $(if (Test-Path $sharedAgentPath) { 'EXISTS' } else { 'NOT FOUND' })"
+        Write-Log "    Config: $(if (Test-Path $sharedConfigPath) { 'EXISTS' } else { 'NOT FOUND (run install.ps1)' })"
+        Write-Log "    Venv: $(if (Test-Path $sharedVenvPath) { 'EXISTS' } else { 'NOT FOUND (run install.ps1)' })"
+
+        # 共有版の設定があれば使用
+        if (Test-Path $sharedConfigPath) {
+            $runnerConfigPath = $sharedConfigPath
+        }
+    }
+}
+if (-not $sharedRunnerFound) {
+    Write-Log "  NOT FOUND in OneDrive folders"
+}
 
 if (Test-Path $runnerConfigPath) {
     Write-Log ""
@@ -311,16 +344,31 @@ try {
     Write-Log "Python (system): NOT FOUND in PATH"
 }
 
+# 開発環境のvenv
 $runnerPython = Join-Path $projectRoot "runner\.venv\Scripts\python.exe"
 if (Test-Path $runnerPython) {
     try {
         $venvPythonVersion = & $runnerPython --version 2>&1
-        Write-Log "Python (runner venv): $venvPythonVersion"
+        Write-Log "Python (dev runner venv): $venvPythonVersion"
     } catch {
-        Write-Log "Python (runner venv): Error getting version"
+        Write-Log "Python (dev runner venv): Error getting version"
     }
 } else {
-    Write-Log "Python (runner venv): NOT FOUND"
+    Write-Log "Python (dev runner venv): NOT FOUND"
+}
+
+# 共有配布版のvenv
+foreach ($oneDrivePath in $foundOneDrivePaths) {
+    $sharedRunnerPython = Join-Path $oneDrivePath "014.ポータルサイト\runner\.venv\Scripts\python.exe"
+    if (Test-Path $sharedRunnerPython) {
+        try {
+            $sharedVenvVersion = & $sharedRunnerPython --version 2>&1
+            Write-Log "Python (shared runner venv): $sharedVenvVersion"
+        } catch {
+            Write-Log "Python (shared runner venv): Error getting version"
+        }
+        break
+    }
 }
 
 # --------------------------------------------------

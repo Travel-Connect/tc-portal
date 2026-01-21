@@ -95,6 +95,7 @@ export interface Machine {
   key_hash: string;
   enabled: boolean;
   last_seen_at: string | null;
+  hostname: string | null;
   created_at: string;
 }
 
@@ -111,6 +112,7 @@ export interface Run {
   log_path: string | null;
   log_url: string | null;
   machine_id: string | null;
+  target_machine_id: string | null;
   run_token_hash: string;
   payload: Record<string, unknown> | null;
 }
