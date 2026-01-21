@@ -30,6 +30,18 @@ export const EXCEL_OPEN_MODE_LABELS: Record<ExcelOpenMode, string> = {
   folder_pick: "フォルダから選択して開く",
 };
 
+// カラープリセット
+export type ColorPreset = "red" | "yellow" | "green" | "blue" | "purple";
+
+// カラープリセットのHEX値マッピング
+export const COLOR_PRESET_VALUES: Record<ColorPreset, string> = {
+  red: "#ef4444",
+  yellow: "#eab308",
+  green: "#22c55e",
+  blue: "#3b82f6",
+  purple: "#a855f7",
+};
+
 // run_config の型定義
 export interface PythonRunnerConfig {
   script?: string;
@@ -127,6 +139,29 @@ export interface Run {
   target_machine_id: string | null;
   run_token_hash: string;
   payload: Record<string, unknown> | null;
+}
+
+export interface ToolUserPreference {
+  id: string;
+  user_id: string;
+  tool_id: string;
+  color_hex: string | null;
+  color_preset: ColorPreset | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * ToolUserPreference から有効なカラーHEX値を取得
+ * color_hex が優先、なければ color_preset のHEX値を返す
+ */
+export function getEffectiveColor(pref: ToolUserPreference | null | undefined): string | null {
+  if (!pref) return null;
+  if (pref.color_hex) return pref.color_hex;
+  if (pref.color_preset && COLOR_PRESET_VALUES[pref.color_preset]) {
+    return COLOR_PRESET_VALUES[pref.color_preset];
+  }
+  return null;
 }
 
 // Extended types with relations

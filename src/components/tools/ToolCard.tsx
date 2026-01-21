@@ -32,6 +32,7 @@ interface ToolCardProps {
   isPinned?: boolean;
   showActions?: boolean;
   disableLink?: boolean;
+  accentColor?: string | null;
 }
 
 export function ToolCard({
@@ -40,6 +41,7 @@ export function ToolCard({
   isPinned = false,
   showActions = true,
   disableLink = false,
+  accentColor,
 }: ToolCardProps) {
   const router = useRouter();
   const [optimisticPinned, setOptimisticPinned] = useState(isPinned);
@@ -121,10 +123,16 @@ export function ToolCard({
   // 実行ボタンを表示するか（確認が必要なツールのみ）
   const showExecuteButton = SHOW_EXECUTE_BUTTON_TYPES.includes(tool.tool_type);
 
+  // アクセントカラーがある場合、背景を薄く染める
+  const cardStyle = accentColor
+    ? { backgroundColor: `${accentColor}15` } // 15 = 約8%の透明度
+    : undefined;
+
   const cardContent = (
     <Card
       data-testid={`tool-card-${tool.id}`}
       className={`transition-shadow h-full ${disableLink ? "" : "hover:shadow-md cursor-pointer"}`}
+      style={cardStyle}
       onClick={handleCardClick}
     >
       <CardHeader className="pb-2">
