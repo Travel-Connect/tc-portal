@@ -37,14 +37,15 @@ export async function updateSession(request: NextRequest) {
   const isAuthCallback = request.nextUrl.pathname === "/auth/callback";
   const isRunnerApi = request.nextUrl.pathname.startsWith("/api/runner/");
   const isRunsCallbackApi = request.nextUrl.pathname === "/api/runs/callback";
+  const isMonitorApi = request.nextUrl.pathname.startsWith("/api/monitor/");
 
   // Allow auth callback
   if (isAuthCallback) {
     return supabaseResponse;
   }
 
-  // Allow Runner API and runs callback (uses X-Machine-Key authentication)
-  if (isRunnerApi || isRunsCallbackApi) {
+  // Allow Runner API, runs callback, and monitor API (uses custom authentication)
+  if (isRunnerApi || isRunsCallbackApi || isMonitorApi) {
     return supabaseResponse;
   }
 

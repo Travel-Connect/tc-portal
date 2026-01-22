@@ -322,7 +322,280 @@ npx playwright test
 
 ---
 
-## 6. 監視・アラート
+## 6. タスク監視（Python/BAT）
+
+### 概要
+
+タスクスケジューラで定期実行される既存のPython/BATスクリプトの実行結果を監視する機能です。
+異常があれば障害ページに表示され、サイドバーの「障害」メニューにバッジが表示されます。
+
+### Webhook API
+
+**エンドポイント:** `POST /api/monitor/report`
+
+**ヘッダー:**
+```
+X-TC-Portal-Secret: <TC_PORTAL_WEBHOOK_SECRET>
+Content-Type: application/json
+```
+
+**ペイロード:**
+```json
+{
+  "task_key": "nightly_import",
+  "task_name": "ナイトリー取込",
+  "kind": "python",
+  "status": "success",
+  "started_at": "2026-01-22T01:00:00Z",
+  "finished_at": "2026-01-22T01:02:30Z",
+  "duration_ms": 150000,
+  "exit_code": 0,
+  "message": "OK",
+  "log_url": null,
+  "machine_name": "PC-B"
+}
+```
+
+| フィールド | 必須 | 説明 |
+|-----------|------|------|
+| `task_key` | ○ | タスクの一意識別子 |
+| `task_name` | ○ | UI表示名 |
+| `kind` | ○ | `python` または `bat` |
+| `status` | ○ | `success` または `failed` |
+| `started_at` | - | 開始日時（ISO 8601） |
+| `finished_at` | - | 終了日時（ISO 8601） |
+| `duration_ms` | - | 実行時間（ミリ秒） |
+| `exit_code` | - | 終了コード |
+| `message` | - | メッセージ（エラー詳細等） |
+| `log_url` | - | ログファイルのパス/URL |
+| `machine_name` | - | 実行PC名（COMPUTERNAME） |
+
+### 環境変数
+
+**Vercel側:**
+```
+TC_PORTAL_WEBHOOK_SECRET=<シークレット値>
+```
+
+**実行PC側（Windows環境変数）:**
+```
+TC_PORTAL_WEBHOOK_SECRET=<Vercelと同じ値>
+```
+
+### curlでテスト（Node.js推奨）
+
+Git Bashのcurlでは日本語が文字化けするため、Node.jsを使用してください:
+
+```javascript
+const https = require('https');
+
+const data = JSON.stringify({
+  task_key: 'test-task',
+  task_name: 'テストタスク',
+  kind: 'python',
+  status: 'success',
+  finished_at: new Date().toISOString(),
+  exit_code: 0,
+  message: 'OK',
+  machine_name: process.env.COMPUTERNAME
+});
+
+const req = https.request({
+  hostname: 'tc-portal.vercel.app',
+  path: '/api/monitor/report',
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-TC-Portal-Secret': process.env.TC_PORTAL_WEBHOOK_SECRET,
+    'Content-Length': Buffer.byteLength(data, 'utf8')
+  }
+}, (res) => {
+  res.on('data', d => console.log(d.toString()));
+});
+
+req.write(data, 'utf8');
+req.end();
+```
+
+### Python/BATへの組み込み
+
+#### Pythonの場合
+
+```python
+import os
+import json
+import urllib.request
+from datetime import datetime, timezone
+
+def report_task_status(task_key, task_name, status, message=None, exit_code=0):
+    url = "https://tc-portal.vercel.app/api/monitor/report"
+    secret = os.environ.get("TC_PORTAL_WEBHOOK_SECRET")
+
+    if not secret:
+        print("[TC Portal] 環境変数未設定のためスキップ")
+        return
+
+    payload = {
+        "task_key": task_key,
+        "task_name": task_name,
+        "kind": "python",
+        "status": status,
+        "finished_at": datetime.now(timezone.utc).isoformat(),
+        "exit_code": exit_code,
+        "message": message,
+        "machine_name": os.environ.get("COMPUTERNAME"),
+    }
+
+    data = json.dumps(payload).encode("utf-8")
+    headers = {
+        "Content-Type": "application/json",
+        "X-TC-Portal-Secret": secret,
+    }
+
+    try:
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            print(f"[TC Portal] 報告{'成功' if resp.status == 200 else '失敗'}")
+    except Exception as e:
+        print(f"[TC Portal] 報告エラー: {e}")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+        report_task_status("my-task", "マイタスク", "success", "処理完了")
+    except Exception as e:
+        report_task_status("my-task", "マイタスク", "failed", str(e), exit_code=1)
+        raise
+```
+
+#### BATの場合
+
+PowerShellを使って報告します:
+
+```batch
+@echo off
+setlocal
+
+REM メイン処理
+call :main
+set EXIT_CODE=%ERRORLEVEL%
+
+REM 結果を報告
+if %EXIT_CODE%==0 (
+    powershell -Command "& { $body = @{task_key='my-batch';task_name='マイバッチ';kind='bat';status='success';finished_at=(Get-Date).ToUniversalTime().ToString('o');exit_code=0;message='OK';machine_name=$env:COMPUTERNAME} | ConvertTo-Json; Invoke-RestMethod -Uri 'https://tc-portal.vercel.app/api/monitor/report' -Method POST -Headers @{'Content-Type'='application/json';'X-TC-Portal-Secret'=$env:TC_PORTAL_WEBHOOK_SECRET} -Body $body }"
+) else (
+    powershell -Command "& { $body = @{task_key='my-batch';task_name='マイバッチ';kind='bat';status='failed';finished_at=(Get-Date).ToUniversalTime().ToString('o');exit_code=%EXIT_CODE%;message='処理失敗';machine_name=$env:COMPUTERNAME} | ConvertTo-Json; Invoke-RestMethod -Uri 'https://tc-portal.vercel.app/api/monitor/report' -Method POST -Headers @{'Content-Type'='application/json';'X-TC-Portal-Secret'=$env:TC_PORTAL_WEBHOOK_SECRET} -Body $body }"
+)
+
+exit /b %EXIT_CODE%
+
+:main
+REM ここに実際の処理を書く
+echo 処理実行中...
+exit /b 0
+```
+
+### 障害ページの見方
+
+1. TC Portal にログイン
+2. 左メニュー「障害」をクリック
+3. 「タスク監視」セクションにタスク一覧が表示
+4. 失敗があれば赤背景で表示され、サイドバーにもバッジ表示
+
+### テーブル構成
+
+**task_monitors**: タスクの最新状態
+- `(task_key, kind, machine_name)` でユニーク
+- 同じタスクが複数PCで動く場合は別々に管理
+
+**task_monitor_runs**: 実行履歴
+- 各報告ごとに1レコード挿入
+- `raw` カラムに受信ペイロードを保存（デバッグ用）
+
+### BATラッパースクリプト（既存BAT監視用）
+
+既存のBATスクリプトを変更せずに監視するためのラッパースクリプトを提供しています。
+
+**ファイル構成:**
+```
+monitoring/windows/
+├── wrap-and-report.bat    # ラッパースクリプト
+└── tcportal-monitor.ps1   # Webhook送信用PowerShell
+```
+
+#### セットアップ手順
+
+1. **ファイル配置**
+   - `monitoring/windows/` フォルダを任意の場所にコピー
+   - 例: `C:\TcPortalMonitor\`
+
+2. **環境変数設定**
+   - システム環境変数に `TC_PORTAL_WEBHOOK_SECRET` を設定
+   - コントロールパネル → システム → システムの詳細設定 → 環境変数
+
+3. **タスクスケジューラ設定**
+   - 既存のタスクを編集
+   - 「操作」タブで以下のように変更:
+
+   | 項目 | 設定値 |
+   |------|--------|
+   | プログラム/スクリプト | `cmd.exe` |
+   | 引数の追加 | `/c "C:\TcPortalMonitor\wrap-and-report.bat nightly_import ナイトリー取込 C:\Scripts\original.bat"` |
+
+   **引数の形式:**
+   ```
+   /c "C:\TcPortalMonitor\wrap-and-report.bat <TASK_KEY> <TASK_NAME> <元のBATのパス> [LOG_DIR]"
+   ```
+
+   - `TASK_KEY`: タスクの一意識別子（英数字、アンダースコア推奨）
+   - `TASK_NAME`: 障害ページに表示する日本語名
+   - 元のBATのパス: 監視対象の既存BATファイル
+   - LOG_DIR: (オプション) ログ出力先ディレクトリ
+
+4. **動作確認**
+   - タスクを手動実行
+   - TC Portal の「障害」ページで結果を確認
+
+#### ラッパーの動作
+
+1. 開始時刻を記録
+2. 指定されたBATを実行
+3. 終了コードを取得（0=success、それ以外=failed）
+4. TC Portal Webhook に結果を送信
+5. **元のBATの終了コードをそのまま返す**（重要）
+
+#### ログ出力
+
+`LOG_DIR` を指定すると、対象BATの出力がログファイルに保存されます:
+- ファイル名: `<TASK_KEY>_<YYYYMMDD>_<HHMMSS>.log`
+- ログURLは `file:///` 形式でWebhookに送信
+
+#### トラブルシューティング
+
+**Webhook送信失敗しても元のBATは正常終了扱い:**
+- `tcportal-monitor.ps1` は常に exit code 0 を返す
+- 監視送信の失敗がタスクスケジューラのエラーハンドリングに影響しない
+
+**文字化け対策:**
+- PowerShellスクリプトはUTF-8でリクエスト送信
+- BATファイルの `setlocal EnableDelayedExpansion` で変数展開を適切に処理
+
+**テスト実行:**
+```batch
+REM 監視スクリプト単体テスト
+powershell -ExecutionPolicy Bypass -File "C:\TcPortalMonitor\tcportal-monitor.ps1" ^
+    -TaskKey "test-task" ^
+    -TaskName "テストタスク" ^
+    -Kind "bat" ^
+    -Status "success" ^
+    -ExitCode 0 ^
+    -Message "テスト送信"
+```
+
+---
+
+## 7. 監視・アラート
 
 ### 推奨監視項目
 

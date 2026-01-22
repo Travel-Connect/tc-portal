@@ -71,3 +71,4 @@ playwright-report-*.zip
 
 # Smoke test logs
 /logs/*.txt
+.env*.local

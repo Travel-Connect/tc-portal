@@ -17,6 +17,7 @@ interface NavItem {
   label: string;
   icon: React.ReactNode;
   adminOnly?: boolean;
+  badgeKey?: string;
 }
 
 const navItems: NavItem[] = [
@@ -24,20 +25,26 @@ const navItems: NavItem[] = [
   { href: "/tools", label: "ツール", icon: <Wrench className="w-5 h-5" /> },
   { href: "/runs", label: "実行履歴", icon: <History className="w-5 h-5" /> },
   { href: "/announcements", label: "お知らせ", icon: <Bell className="w-5 h-5" /> },
-  { href: "/incidents", label: "障害", icon: <AlertTriangle className="w-5 h-5" /> },
+  { href: "/incidents", label: "障害", icon: <AlertTriangle className="w-5 h-5" />, badgeKey: "jobError" },
   { href: "/admin", label: "管理", icon: <Settings className="w-5 h-5" /> },
 ];
 
 interface SidebarProps {
   isAdmin?: boolean;
+  failedTaskCount?: number;
 }
 
-export function Sidebar({ isAdmin = false }: SidebarProps) {
+export function Sidebar({ isAdmin = false, failedTaskCount = 0 }: SidebarProps) {
   const pathname = usePathname();
 
   const filteredItems = navItems.filter(
     (item) => !item.adminOnly || isAdmin
   );
+
+  const getBadgeCount = (badgeKey?: string): number => {
+    if (badgeKey === "jobError") return failedTaskCount;
+    return 0;
+  };
 
   return (
     <aside className="w-64 bg-sidebar border-r border-sidebar-border h-screen sticky top-0">
@@ -53,6 +60,7 @@ export function Sidebar({ isAdmin = false }: SidebarProps) {
               item.href === "/"
                 ? pathname === "/"
                 : pathname.startsWith(item.href);
+            const badgeCount = getBadgeCount(item.badgeKey);
 
             return (
               <li key={item.href}>
@@ -65,8 +73,18 @@ export function Sidebar({ isAdmin = false }: SidebarProps) {
                       : "text-sidebar-foreground hover:bg-sidebar-accent/50"
                   )}
                 >
-                  {item.icon}
-                  {item.label}
+                  <span className="relative">
+                    {item.icon}
+                    {badgeCount > 0 && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-destructive rounded-full" />
+                    )}
+                  </span>
+                  <span className="flex-1">{item.label}</span>
+                  {badgeCount > 0 && (
+                    <span className="px-1.5 py-0.5 text-xs font-semibold bg-destructive text-destructive-foreground rounded-full">
+                      {badgeCount}
+                    </span>
+                  )}
                 </Link>
               </li>
             );

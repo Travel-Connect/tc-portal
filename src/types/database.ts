@@ -164,6 +164,64 @@ export function getEffectiveColor(pref: ToolUserPreference | null | undefined): 
   return null;
 }
 
+// Job監視ステータス
+export type JobStatusValue = "success" | "error";
+
+export interface JobStatus {
+  id: string;
+  job_key: string;
+  title: string;
+  tool_id: string | null;
+  last_status: JobStatusValue;
+  last_finished_at: string;
+  last_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JobStatusWithTool extends JobStatus {
+  tools?: Tool | null;
+}
+
+// タスク監視
+export type TaskKind = "python" | "bat";
+export type TaskStatus = "success" | "failed";
+
+export interface TaskMonitor {
+  id: string;
+  task_key: string;
+  task_name: string;
+  kind: TaskKind;
+  machine_name: string | null;
+  enabled: boolean;
+  last_status: TaskStatus | null;
+  last_started_at: string | null;
+  last_finished_at: string | null;
+  last_exit_code: number | null;
+  last_message: string | null;
+  last_log_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskMonitorRun {
+  id: string;
+  monitor_id: string;
+  status: TaskStatus;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number | null;
+  exit_code: number | null;
+  message: string | null;
+  log_url: string | null;
+  raw: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface TaskMonitorRunWithMonitor extends TaskMonitorRun {
+  task_monitors?: TaskMonitor;
+}
+
 // Extended types with relations
 export interface ToolWithCategory extends Tool {
   category?: Category;
