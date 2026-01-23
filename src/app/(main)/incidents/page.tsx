@@ -147,7 +147,7 @@ function TaskMonitorRow({ task }: { task: TaskMonitor }) {
           <div className="text-sm">{timeAgo}</div>
           {task.last_finished_at && (
             <div className="text-xs text-muted-foreground">
-              {new Date(task.last_finished_at).toLocaleString("ja-JP")}
+              {new Date(task.last_finished_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}
             </div>
           )}
         </div>
