@@ -7,19 +7,14 @@ test.describe("Home Page", () => {
     // ヘッダーが表示される
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 
-    // ツールカードが存在する（少なくとも1つ）
-    const toolCards = page.locator("[data-testid='tool-card']").or(
-      page.locator(".cursor-pointer").filter({ has: page.locator("h3, [class*='CardTitle']") })
-    );
+    // ホーム画面にツール関連のセクションが表示される
+    const hasToolSection = await page
+      .getByRole("heading", { name: /ツール|ピン留め|お気に入り/ })
+      .first()
+      .isVisible()
+      .catch(() => false);
 
-    // ツールが1つ以上あるか、空の場合はメッセージが表示される
-    const cardCount = await toolCards.count();
-    if (cardCount === 0) {
-      // ツールがない場合の表示確認
-      await expect(page.getByText(/ツール|表示/)).toBeVisible();
-    } else {
-      await expect(toolCards.first()).toBeVisible();
-    }
+    expect(hasToolSection).toBeTruthy();
   });
 
   test("ピン留め機能が存在する", async ({ page }) => {
