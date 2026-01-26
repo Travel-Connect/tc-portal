@@ -50,6 +50,43 @@ export async function getOnlineMachines(
 }
 
 /**
+ * 有効なマシン一覧を取得する（オンライン状態付き）
+ * enabled=true のマシンを全て返し、last_seen_at でオンライン判定可能
+ *
+ * @returns マシン一覧
+ */
+export async function getEnabledMachines(): Promise<{
+  success: boolean;
+  machines?: Pick<Machine, "id" | "name" | "hostname" | "last_seen_at">[];
+  error?: string;
+}> {
+  const supabase = await createClient();
+
+  // Get current user (認証チェック)
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "ログインが必要です" };
+  }
+
+  // enabled なマシンを全て取得（オンライン/オフライン問わず）
+  const { data: machines, error } = await supabase
+    .from("machines")
+    .select("id, name, hostname, last_seen_at")
+    .eq("enabled", true)
+    .order("name");
+
+  if (error) {
+    console.error("[getEnabledMachines] Error:", error);
+    return { success: false, error: "マシン一覧の取得に失敗しました" };
+  }
+
+  return {
+    success: true,
+    machines: machines || [],
+  };
+}
+
+/**
  * 全マシン一覧を取得する（管理用）
  *
  * @returns マシン一覧

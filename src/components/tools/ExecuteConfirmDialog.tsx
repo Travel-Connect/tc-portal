@@ -23,7 +23,7 @@ import { Label } from "@/components/ui/label";
 import type { Tool, Machine } from "@/types/database";
 import { TOOL_TYPE_LABELS } from "@/types/database";
 import { createRun, createHelperRun } from "@/lib/actions/runs";
-import { getOnlineMachines } from "@/lib/actions/machines";
+import { getEnabledMachines } from "@/lib/actions/machines";
 import { generateHelperUrl, HELPER_SUCCESS_MESSAGES } from "@/lib/helper";
 
 // localStorage key for default machine
@@ -51,7 +51,7 @@ export function ExecuteConfirmDialog({
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // マシン選択用の状態
-  const [onlineMachines, setOnlineMachines] = useState<Pick<Machine, "id" | "name" | "hostname" | "last_seen_at">[]>([]);
+  const [enabledMachines, setEnabledMachines] = useState<Pick<Machine, "id" | "name" | "hostname" | "last_seen_at">[]>([]);
   const [selectedMachineId, setSelectedMachineId] = useState<string>(AUTO_VALUE);
   const [isLoadingMachines, setIsLoadingMachines] = useState(false);
 
@@ -81,14 +81,14 @@ export function ExecuteConfirmDialog({
     const fetchMachines = async () => {
       setIsLoadingMachines(true);
       try {
-        const response = await getOnlineMachines();
+        const response = await getEnabledMachines();
         if (response.success && response.machines) {
-          setOnlineMachines(response.machines);
+          setEnabledMachines(response.machines);
 
           // localStorageからデフォルトマシンを復元
           const savedMachineId = localStorage.getItem(STORAGE_KEY_DEFAULT_MACHINE);
           if (savedMachineId) {
-            // 保存されたマシンがオンライン一覧に含まれる場合のみ設定
+            // 保存されたマシンが一覧に含まれる場合のみ設定
             const exists = response.machines.some(m => m.id === savedMachineId);
             if (exists) {
               setSelectedMachineId(savedMachineId);
@@ -179,6 +179,14 @@ export function ExecuteConfirmDialog({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [open, isPending, result?.success, handleExecute]);
 
+  // マシンがオンラインかどうか判定（last_seen_at が2分以内）
+  const isMachineOnline = (machine: Pick<Machine, "last_seen_at">) => {
+    if (!machine.last_seen_at) return false;
+    const lastSeen = new Date(machine.last_seen_at).getTime();
+    const threshold = Date.now() - 2 * 60 * 1000;
+    return lastSeen >= threshold;
+  };
+
   // マシン表示名を生成
   const getMachineDisplayName = (machine: Pick<Machine, "id" | "name" | "hostname">) => {
     if (machine.hostname && machine.hostname !== machine.name) {
@@ -231,16 +239,19 @@ export function ExecuteConfirmDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={AUTO_VALUE}>自動</SelectItem>
-                  {onlineMachines.map((machine) => (
+                  {enabledMachines.map((machine) => (
                     <SelectItem key={machine.id} value={machine.id}>
-                      {getMachineDisplayName(machine)}
+                      <span className="flex items-center gap-2">
+                        <span className={`inline-block h-2 w-2 rounded-full ${isMachineOnline(machine) ? "bg-green-500" : "bg-gray-300"}`} />
+                        {getMachineDisplayName(machine)}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {onlineMachines.length === 0 && !isLoadingMachines && (
+              {enabledMachines.length === 0 && !isLoadingMachines && (
                 <p className="text-xs text-muted-foreground">
-                  オンラインのRunnerがありません。「自動」で実行すると、次にオンラインになったRunnerが実行します。
+                  登録済みのRunnerがありません。「自動」で実行すると、次にオンラインになったRunnerが実行します。
                 </p>
               )}
             </div>
