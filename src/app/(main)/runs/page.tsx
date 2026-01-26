@@ -2,7 +2,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { History, ExternalLink, Clock, CheckCircle, XCircle, Loader2, Ban } from "lucide-react";
 import { getRuns } from "@/lib/queries/runs";
+import { getEnabledMachines } from "@/lib/actions/machines";
 import { LogPathActions } from "@/components/runs/LogPathActions";
+import { RunnerStatusPanel } from "@/components/runs/RunnerStatusPanel";
 import type { RunStatus } from "@/types/database";
 
 // ステータスの日本語ラベルとスタイル
@@ -27,7 +29,11 @@ function formatDateTime(dateString: string | null): string {
 }
 
 export default async function RunsPage() {
-  const runs = await getRuns(100);
+  const [runs, machinesResult] = await Promise.all([
+    getRuns(100),
+    getEnabledMachines(),
+  ]);
+  const machines = machinesResult.machines || [];
 
   return (
     <div className="space-y-6">
@@ -35,6 +41,8 @@ export default async function RunsPage() {
         <History className="w-6 h-6" />
         <h1 className="text-2xl font-bold">実行履歴</h1>
       </div>
+
+      <RunnerStatusPanel machines={machines} />
 
       <Card>
         <CardHeader>

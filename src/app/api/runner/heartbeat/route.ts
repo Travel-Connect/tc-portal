@@ -11,9 +11,10 @@ import { createHash } from "crypto";
  *
  * Body (JSON):
  *   hostname?: string  - RunnerのPC名（COMPUTERNAME）
+ *   starting?: boolean - 起動直後のハートビート（古いコマンドを無視）
  *
  * Response:
- *   200: 成功
+ *   200: 成功（command フィールドにペンディングコマンドを含む場合あり）
  *   401: 認証失敗
  *   403: マシンが無効
  *   500: サーバーエラー
@@ -30,9 +31,11 @@ export async function POST(request: NextRequest) {
 
   // リクエストボディを取得（オプション）
   let hostname: string | null = null;
+  let starting = false;
   try {
     const body = await request.json();
     hostname = body.hostname || null;
+    starting = body.starting === true;
   } catch {
     // ボディがない場合は無視
   }
@@ -44,7 +47,7 @@ export async function POST(request: NextRequest) {
 
   const { data: machine, error: machineError } = await supabase
     .from("machines")
-    .select("id, name, enabled")
+    .select("id, name, enabled, pending_command")
     .eq("key_hash", keyHash)
     .single();
 
@@ -85,9 +88,24 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // pending_command の処理
+  let command: string | null = null;
+  if (machine.pending_command) {
+    // 起動直後のハートビートでは古いコマンドを無視（クリアのみ）
+    if (!starting) {
+      command = machine.pending_command;
+    }
+    // コマンドをクリア
+    await supabase
+      .from("machines")
+      .update({ pending_command: null })
+      .eq("id", machine.id);
+  }
+
   return NextResponse.json({
     success: true,
     machine_id: machine.id,
     machine_name: machine.name,
+    command,
   });
 }

@@ -1,6 +1,8 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { revalidatePath } from "next/cache";
 import type { Machine } from "@/types/database";
 
 /**
@@ -118,4 +120,58 @@ export async function getAllMachines(): Promise<{
     success: true,
     machines: machines || [],
   };
+}
+
+/**
+ * Runner に停止コマンドを送信する
+ * machines.pending_command に "stop" をセットし、
+ * 次のハートビートで Runner が受信して停止する。
+ */
+export async function stopRunner(machineId: string): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "ログインが必要です" };
+  }
+
+  // マシンの存在・有効・オンライン確認
+  const { data: machine, error: fetchError } = await supabase
+    .from("machines")
+    .select("id, name, enabled, last_seen_at")
+    .eq("id", machineId)
+    .single();
+
+  if (fetchError || !machine) {
+    return { success: false, error: "マシンが見つかりません" };
+  }
+
+  if (!machine.enabled) {
+    return { success: false, error: "マシンが無効です" };
+  }
+
+  // オンライン判定（2分以内）
+  const threshold = new Date();
+  threshold.setMinutes(threshold.getMinutes() - 2);
+  if (!machine.last_seen_at || new Date(machine.last_seen_at) < threshold) {
+    return { success: false, error: "Runner はオフラインです" };
+  }
+
+  // admin client で pending_command を設定（RLS バイパス）
+  const adminSupabase = createAdminClient();
+  const { error: updateError } = await adminSupabase
+    .from("machines")
+    .update({ pending_command: "stop" })
+    .eq("id", machineId);
+
+  if (updateError) {
+    console.error("[stopRunner] Update error:", updateError);
+    return { success: false, error: "コマンドの送信に失敗しました" };
+  }
+
+  revalidatePath("/runs");
+  return { success: true };
 }

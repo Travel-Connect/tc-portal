@@ -120,6 +120,7 @@ export interface Machine {
   enabled: boolean;
   last_seen_at: string | null;
   hostname: string | null;
+  pending_command: string | null;
   created_at: string;
 }
 
