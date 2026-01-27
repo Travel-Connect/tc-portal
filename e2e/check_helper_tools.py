@@ -1,8 +1,20 @@
 """Check and update helper-type tools execution_mode."""
+import os
+from pathlib import Path
 import requests
 
-SUPABASE_URL = "https://beopwoevumsduqlxzudu.supabase.co"
-SUPABASE_SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJlb3B3b2V2dW1zZHVxbHh6dWR1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODI3ODU2OCwiZXhwIjoyMDgzODU0NTY4fQ.zkCFql0ogzb3X_WXpxSMgY00HtYyZikbJBFRxwbQq3Q"
+# Load .env.local
+_env_file = Path(__file__).resolve().parent.parent / ".env.local"
+if _env_file.exists():
+    with open(_env_file, "r", encoding="utf-8") as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _v = _line.split("=", 1)
+                os.environ.setdefault(_k, _v)
+
+SUPABASE_URL = os.environ["NEXT_PUBLIC_SUPABASE_URL"]
+SUPABASE_SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 
 headers = {
     "apikey": SUPABASE_SERVICE_KEY,

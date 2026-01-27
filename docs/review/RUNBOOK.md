@@ -615,3 +615,70 @@ SELECT COUNT(*) FROM runs
 WHERE status = 'queued'
 AND requested_at < NOW() - INTERVAL '5 minutes';
 ```
+
+---
+
+## 8. 秘密情報の管理ポリシー
+
+### 8.1 基本ルール
+
+**共有資料・リポジトリに秘密情報の「値」を絶対に書かない。**
+
+| 書いてよいもの | 書いてはいけないもの |
+|-------------|-----------------|
+| 変数名（`SUPABASE_SERVICE_ROLE_KEY`） | 実際のキー値（`eyJ...`） |
+| プレースホルダー（`your-machine-key-here`） | 実パスワード |
+| 取得手順（「Supabase Dashboard → Settings → API」） | メールアドレス+パスワードのセット |
+| `config.example.json`（テンプレート） | `config.json`（実設定） |
+
+### 8.2 秘密情報の受け渡し方法
+
+レビュアーやチームメンバーに認証情報を渡す場合:
+
+1. **Slack DM / メール** など、リポジトリ外の経路で共有
+2. **GitHub Secrets** に登録（CI/CD用）
+3. **1Password / Bitwarden** 等のパスワードマネージャーで共有
+4. **絶対に** `.md` ファイル、コミットメッセージ、PR本文、Issue に値を書かない
+
+### 8.3 リポジトリ内で守るべきこと
+
+- `.env.local` は `.gitignore` 対象（コミットしない）
+- `runner/config.json`, `runner/config-*.json` は `.gitignore` 対象
+- `runner/config.example.json` のみリポジトリに残す（プレースホルダー値）
+- マイグレーションファイル (`.sql`) にテスト用クレデンシャルを書かない
+- `e2e/` のPythonスクリプトでは `os.environ[]` で環境変数から読む
+
+### 8.4 レビューパック (ZIP) の安全性
+
+`scripts/export-review-pack.ps1` は以下の多層防御で秘密情報の混入を防ぎます:
+
+1. **ファイル除外**: `config.json`, `config-*.json`, `.env.local`, `REVIEW_PACK.md`, `temp_*.json` を自動除外
+2. **シークレットスキャン**: ZIP化前に全テキストファイルをパターン検索
+   - JWT トークン、パスワード値、サービスキー、Supabase URL を検知
+   - 検知時は `exit 1` で中断（`-Force` で強制続行可能）
+3. **バイナリ除外**: `.png`, `.jpg` 等はスキャン対象外
+
+### 8.5 漏洩発覚時のローテーション手順
+
+秘密情報がリポジトリに混入した場合:
+
+1. **即座にキーをローテーション**（値を無効化）
+   - Supabase: Dashboard → Settings → API → 「Regenerate」
+   - Runner machine_key: `machines` テーブルの `key_hash` を更新 + Runner config を差し替え
+   - E2Eパスワード: Supabase Auth でパスワード変更 + GitHub Secrets 更新
+
+2. **リポジトリからの除去**
+   - 該当ファイルを修正してコミット・プッシュ
+   - `.gitignore` に追加（未追加の場合）
+
+3. **Git 履歴からの除去**（必要に応じて）
+   - `git filter-repo` または BFG Repo-Cleaner を使用
+   - **注意**: 履歴書き換えは force push が必要。チーム全員にリベースを依頼すること
+   ```bash
+   # git-filter-repo を使用する場合
+   pip install git-filter-repo
+   git filter-repo --replace-text expressions.txt
+   # expressions.txt: 置換対象の文字列を記載
+   # 例: eyJhbGci...==>***REMOVED***
+   ```
+   - 書き換え後、全員が `git clone` し直すのが最も安全

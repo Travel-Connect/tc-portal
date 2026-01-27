@@ -43,10 +43,14 @@ yarn-error.log*
 next-env.d.ts
 tmpclaude-*
 
+# Supabase CLI temp files
+supabase/.temp/
+
 # E2E tests (Python - legacy)
 e2e/.venv/
 e2e/__pycache__/
 e2e/.pytest_cache/
+e2e/tests/__pycache__/
 
 # Playwright E2E
 /playwright-report/
@@ -55,6 +59,7 @@ e2e/.pytest_cache/
 
 # Runner
 runner/config.json
+runner/config-*.json
 runner/.venv/
 runner/__pycache__/
 

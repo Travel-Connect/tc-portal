@@ -11,7 +11,7 @@ from playwright.sync_api import Page, expect
 import requests
 
 SCREENSHOT_DIR = Path(__file__).parent.parent / "screenshots"
-SUPABASE_URL = "https://beopwoevumsduqlxzudu.supabase.co"
+SUPABASE_URL = os.environ["NEXT_PUBLIC_SUPABASE_URL"]
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
 # フォルダテスト tool ID（既存のフォルダテストツールを使用）

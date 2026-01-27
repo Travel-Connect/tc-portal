@@ -7,8 +7,8 @@ from playwright.sync_api import Page, expect
 import requests
 
 SCREENSHOT_DIR = Path(__file__).parent.parent / "screenshots"
-SUPABASE_URL = "https://beopwoevumsduqlxzudu.supabase.co"
-SUPABASE_SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJlb3B3b2V2dW1zZHVxbHh6dWR1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODI3ODU2OCwiZXhwIjoyMDgzODU0NTY4fQ.zkCFql0ogzb3X_WXpxSMgY00HtYyZikbJBFRxwbQq3Q"
+SUPABASE_URL = os.environ["NEXT_PUBLIC_SUPABASE_URL"]
+SUPABASE_SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 
 
 def save_screenshot(page: Page, name: str):
