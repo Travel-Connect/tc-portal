@@ -9,8 +9,14 @@ on:
 
 env:
   E2E_BASE_URL: ${{ secrets.E2E_BASE_URL || 'https://tc-portal.vercel.app' }}
-  E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
-  E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+  # Legacy (single-user) — global-setup.ts
+  E2E_EMAIL: ${{ secrets.E2E_USER_A_EMAIL }}
+  E2E_PASSWORD: ${{ secrets.E2E_USER_A_PASSWORD }}
+  # Multi-user — auth.setup.ts
+  E2E_USER_A_EMAIL: ${{ secrets.E2E_USER_A_EMAIL }}
+  E2E_USER_A_PASSWORD: ${{ secrets.E2E_USER_A_PASSWORD }}
+  E2E_USER_B_EMAIL: ${{ secrets.E2E_USER_B_EMAIL }}
+  E2E_USER_B_PASSWORD: ${{ secrets.E2E_USER_B_PASSWORD }}
 
 jobs:
   e2e:
@@ -44,6 +50,19 @@ jobs:
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
+
+      - name: Preflight — check required secrets
+        run: |
+          missing=""
+          [ -z "$E2E_USER_A_EMAIL" ]    && missing="$missing E2E_USER_A_EMAIL"
+          [ -z "$E2E_USER_A_PASSWORD" ] && missing="$missing E2E_USER_A_PASSWORD"
+          [ -z "$E2E_USER_B_EMAIL" ]    && missing="$missing E2E_USER_B_EMAIL"
+          [ -z "$E2E_USER_B_PASSWORD" ] && missing="$missing E2E_USER_B_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required secrets:$missing"
+            exit 1
+          fi
+          echo "All required secrets are set."
 
       - name: Install dependencies
         run: pnpm install

@@ -9,9 +9,16 @@ dotenv.config({ path: path.resolve(__dirname, ".env.local") });
  * TC Portal E2E Test Configuration
  *
  * 環境変数:
- * - E2E_BASE_URL: テスト対象URL (default: http://localhost:3000)
- * - E2E_EMAIL: テストユーザーのメールアドレス
- * - E2E_PASSWORD: テストユーザーのパスワード
+ *   共通:
+ *     E2E_BASE_URL          テスト対象URL (default: http://localhost:3000)
+ *   単一ユーザー (global-setup.ts → .auth/user.json):
+ *     E2E_EMAIL             テストユーザーのメールアドレス
+ *     E2E_PASSWORD           テストユーザーのパスワード
+ *   マルチユーザー (auth.setup.ts → .auth/userA.json, userB.json):
+ *     E2E_USER_A_EMAIL      ユーザーA のメールアドレス
+ *     E2E_USER_A_PASSWORD   ユーザーA のパスワード
+ *     E2E_USER_B_EMAIL      ユーザーB のメールアドレス
+ *     E2E_USER_B_PASSWORD   ユーザーB のパスワード
  */
 export default defineConfig({
   testDir: "./tests/e2e",
