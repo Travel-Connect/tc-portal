@@ -10,7 +10,6 @@ export type ToolType =
   | "pad"
   | "folder_set"
   | "folder"
-  | "shortcut"
   | "bat";
 
 export type IconMode = "lucide" | "upload";
@@ -249,7 +248,7 @@ export interface RunWithDetails extends Run {
  * tool_type から execution_mode を決定する
  * - open: url, sheet (ブラウザで開く)
  * - queue: python_runner, pad (Runner経由で実行)
- * - helper: excel, bi, folder, folder_set, shortcut, exe, bat (ローカルHelper起動)
+ * - helper: excel, bi, folder, folder_set, exe, bat (ローカルHelper起動)
  */
 export function getExecutionModeForToolType(toolType: ToolType): ExecutionMode {
   switch (toolType) {
@@ -268,7 +267,6 @@ export function getExecutionModeForToolType(toolType: ToolType): ExecutionMode {
     case "bi":
     case "folder":
     case "folder_set":
-    case "shortcut":
     case "exe":
     case "bat":
       return "helper";
@@ -290,7 +288,6 @@ export const TOOL_TYPE_LABELS: Record<ToolType, string> = {
   pad: "PAD",
   folder_set: "Folder",
   folder: "Folder",
-  shortcut: "Shortcut",
   bat: "BAT",
 };
 
@@ -305,7 +302,6 @@ export const TOOL_TYPE_VARIANTS: Record<ToolType, "default" | "secondary" | "out
   pad: "secondary",
   folder_set: "outline",
   folder: "outline",
-  shortcut: "outline",
   bat: "outline",
 };
 
@@ -321,5 +317,4 @@ export const TOOL_TYPE_OPTIONS: { value: ToolType; label: string }[] = [
   { value: "folder", label: "フォルダ" },
   { value: "folder_set", label: "フォルダセット (複数)" },
   { value: "bat", label: "BAT (バッチファイル)" },
-  { value: "shortcut", label: "ショートカット" },
 ];

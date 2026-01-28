@@ -12,7 +12,6 @@ export const HELPER_TOOL_TYPES: ToolType[] = [
   "bi",
   "folder",
   "folder_set",
-  "shortcut",
   "exe",
   "bat",
 ];
@@ -21,7 +20,6 @@ export const HELPER_TOOL_TYPES: ToolType[] = [
 export const SAFE_HELPER_TYPES: ToolType[] = [
   "folder",
   "folder_set",
-  "shortcut",
   "excel",
   "bi",
 ];
@@ -38,7 +36,6 @@ const TOOL_TYPE_TO_ACTION: Record<string, string> = {
   bi: "open_file",
   folder: "open_folder",
   folder_set: "open_folders",
-  shortcut: "open_shortcut",
   exe: "run_exe",
   bat: "run_bat",
 };
@@ -49,7 +46,6 @@ export const HELPER_SUCCESS_MESSAGES: Record<string, string> = {
   bi: "Power BIを開きました",
   folder: "フォルダを開きました",
   folder_set: "フォルダセットを開きました",
-  shortcut: "ショートカットを実行しました",
   exe: "EXE起動（ローカル）",
   bat: "BAT実行（ローカル）",
 };
