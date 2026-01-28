@@ -296,6 +296,7 @@ export function AnnouncementAdmin({ initialAnnouncements }: AnnouncementAdminPro
                       variant="ghost"
                       onClick={() => handleEdit(announcement)}
                       disabled={isPending}
+                      title="編集"
                     >
                       <Pencil className="w-4 h-4" />
                     </Button>
@@ -304,6 +305,7 @@ export function AnnouncementAdmin({ initialAnnouncements }: AnnouncementAdminPro
                       variant="ghost"
                       onClick={() => handleDelete(announcement.id)}
                       disabled={isPending}
+                      title="削除"
                       className="text-destructive hover:text-destructive"
                     >
                       <Trash2 className="w-4 h-4" />
