@@ -234,6 +234,26 @@ export interface TaskMonitorRunWithMonitor extends TaskMonitorRun {
   task_monitors?: TaskMonitor;
 }
 
+// お知らせ
+export type AnnouncementStatus = "draft" | "published";
+
+export interface Announcement {
+  id: string;
+  title: string;
+  body: string;
+  status: AnnouncementStatus;
+  published_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AnnouncementDismissal {
+  announcement_id: string;
+  user_id: string;
+  dismissed_at: string;
+}
+
 // Extended types with relations
 export interface ToolWithCategory extends Tool {
   category?: Category;

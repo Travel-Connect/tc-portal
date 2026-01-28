@@ -37,7 +37,7 @@ const adminSections = [
     description: "お知らせの作成・編集",
     icon: Bell,
     href: "/admin/announcements",
-    implemented: false,
+    implemented: true,
   },
   {
     title: "障害管理",

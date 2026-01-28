@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { Bell, Grid3X3 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Grid3X3 } from "lucide-react";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { AllToolsSection, PinnedToolsSection } from "@/components/tools";
+import { HomeAnnouncementsBanner } from "@/components/announcements";
 import { createClient } from "@/lib/supabase/server";
 import { getCategories } from "@/lib/queries/categories";
 import { getToolsWithUserOrder } from "@/lib/queries/tools";
@@ -52,20 +53,8 @@ export default async function HomePage() {
 
   return (
     <div className="space-y-8">
-      {/* 重要なお知らせバナー */}
-      <Card className="bg-yellow-50 border-yellow-200">
-        <CardContent className="py-4">
-          <div className="flex items-center gap-3">
-            <Bell className="w-5 h-5 text-yellow-600" />
-            <div>
-              <p className="font-medium text-yellow-800">重要なお知らせ</p>
-              <p className="text-sm text-yellow-700">
-                お知らせがある場合はここに表示されます
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* お知らせバナー（未読最大3件） */}
+      <HomeAnnouncementsBanner />
 
       {/* ピン留めセクション */}
       <PinnedToolsSection tools={pinnedTools as Tool[]} colorPreferences={colorPreferences} />
