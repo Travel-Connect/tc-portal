@@ -27,11 +27,12 @@ export async function createRun(
     return { success: false, error: "ログインが必要です" };
   }
 
-  // ツールの存在確認
+  // ツールの存在確認（削除済みを除外）
   const { data: tool, error: toolError } = await supabase
     .from("tools")
     .select("id, name, tool_type, execution_mode")
     .eq("id", toolId)
+    .is("deleted_at", null)
     .single();
 
   if (toolError || !tool) {
@@ -101,11 +102,12 @@ export async function createHelperRun(toolId: string): Promise<{
     return { success: false, error: "ログインが必要です" };
   }
 
-  // ツールの存在確認
+  // ツールの存在確認（削除済みを除外）
   const { data: tool, error: toolError } = await supabase
     .from("tools")
     .select("id, name, tool_type, execution_mode")
     .eq("id", toolId)
+    .is("deleted_at", null)
     .single();
 
   if (toolError || !tool) {

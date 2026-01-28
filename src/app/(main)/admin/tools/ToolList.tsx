@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Plus, Pencil, Archive, ArchiveRestore, Upload } from "lucide-react";
+import { Plus, Pencil, Archive, ArchiveRestore, Upload, Trash2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +9,7 @@ import type { Tool, Category, IconMode, FolderSetConfig, ToolUserPreference } fr
 import { TOOL_TYPE_LABELS, isUrlRunConfig } from "@/types/database";
 import { getEffectiveColor } from "@/types/database";
 import { createTool, updateTool, archiveTool, uploadToolIcon } from "@/lib/actions/tools";
-import { ToolIcon, ToolColorPicker } from "@/components/tools";
+import { ToolIcon, ToolColorPicker, DeleteToolDialog } from "@/components/tools";
 import { ToolForm, type FormState } from "./ToolForm";
 
 interface ToolWithCategory extends Tool {
@@ -42,6 +42,7 @@ export function ToolList({ initialTools, categories, colorPreferences: initialCo
   const [tools, setTools] = useState(initialTools);
   const [colorPreferences, setColorPreferences] = useState(initialColorPrefs);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deletingTool, setDeletingTool] = useState<{ id: string; name: string } | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -409,6 +410,16 @@ export function ToolList({ initialTools, categories, colorPreferences: initialCo
                         <Archive className="w-4 h-4" />
                       )}
                     </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setDeletingTool({ id: tool.id, name: tool.name })}
+                      disabled={isPending}
+                      title="削除"
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
                   </div>
                 </div>
               )
@@ -421,6 +432,18 @@ export function ToolList({ initialTools, categories, colorPreferences: initialCo
           </div>
         </CardContent>
       </Card>
+
+      {deletingTool && (
+        <DeleteToolDialog
+          toolId={deletingTool.id}
+          toolName={deletingTool.name}
+          open={!!deletingTool}
+          onOpenChange={(open) => { if (!open) setDeletingTool(null); }}
+          onDeleted={() => {
+            setTools(tools.filter((t) => t.id !== deletingTool.id));
+          }}
+        />
+      )}
     </div>
   );
 }

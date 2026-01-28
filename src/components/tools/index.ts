@@ -6,6 +6,7 @@ export { SortableToolCard } from "./SortableToolCard";
 export { AllToolsSection } from "./AllToolsSection";
 export { ExecuteConfirmDialog } from "./ExecuteConfirmDialog";
 export { MultiUrlDialog } from "./MultiUrlDialog";
+export { DeleteToolDialog } from "./DeleteToolDialog";
 export { HelperGuideBanner } from "./HelperGuideBanner";
 export { PinnedToolsSection } from "./PinnedToolsSection";
 export { ToolColorPicker } from "./ToolColorPicker";

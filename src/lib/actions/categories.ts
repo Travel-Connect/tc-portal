@@ -70,11 +70,12 @@ export async function deleteCategory(id: string) {
     return { success: false, error: "認証が必要です" };
   }
 
-  // Check if category has tools
+  // Check if category has active (non-deleted) tools
   const { data: tools } = await supabase
     .from("tools")
     .select("id")
     .eq("category_id", id)
+    .is("deleted_at", null)
     .limit(1);
 
   if (tools && tools.length > 0) {

@@ -27,7 +27,7 @@ export async function getFavoriteTools(userId: string): Promise<FavoriteToolWith
   // Extract tools from the joined data
   return (data || [])
     .map((f) => f.tools as unknown as FavoriteToolWithCategory)
-    .filter((t): t is FavoriteToolWithCategory => t !== null && !t.is_archived);
+    .filter((t): t is FavoriteToolWithCategory => t !== null && !t.is_archived && !t.deleted_at);
 }
 
 export async function getFavoriteToolIds(userId: string): Promise<string[]> {

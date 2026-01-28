@@ -99,6 +99,9 @@ export interface Tool {
   // Excel専用フィールド
   excel_open_mode: ExcelOpenMode;
   excel_folder_path: string | null;
+  // Soft delete
+  deleted_at: string | null;
+  deleted_by: string | null;
   created_at: string;
   updated_at: string;
 }

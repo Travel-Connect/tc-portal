@@ -148,6 +148,32 @@ export async function archiveTool(id: string, archived: boolean) {
   return { success: true };
 }
 
+export async function deleteTool(id: string) {
+  const supabase = await createClient();
+
+  // 認証チェック
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "認証が必要です" };
+  }
+
+  const { error } = await supabase
+    .from("tools")
+    .update({ deleted_at: new Date().toISOString(), deleted_by: user.id })
+    .eq("id", id)
+    .is("deleted_at", null);
+
+  if (error) {
+    console.error("Error deleting tool:", error);
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/");
+  revalidatePath("/tools");
+  revalidatePath("/admin/tools");
+  return { success: true };
+}
+
 // Allowed icon file types
 const ALLOWED_ICON_TYPES = ["image/png", "image/jpeg", "image/webp"];
 const MAX_ICON_SIZE = 2 * 1024 * 1024; // 2MB

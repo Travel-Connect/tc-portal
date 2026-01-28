@@ -29,7 +29,7 @@ export async function getPinnedTools(userId: string): Promise<PinnedToolWithCate
   // Extract tools from the joined data (already sorted by sort_order)
   return (data || [])
     .map((p) => p.tools as unknown as PinnedToolWithCategory)
-    .filter((t): t is PinnedToolWithCategory => t !== null && !t.is_archived);
+    .filter((t): t is PinnedToolWithCategory => t !== null && !t.is_archived && !t.deleted_at);
 }
 
 export async function getPinnedToolIds(userId: string): Promise<string[]> {

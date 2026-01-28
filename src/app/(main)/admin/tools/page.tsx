@@ -17,6 +17,7 @@ async function getAllTools(): Promise<ToolWithCategory[]> {
       *,
       categories (*)
     `)
+    .is("deleted_at", null)
     .order("name", { ascending: true });
 
   if (error) {

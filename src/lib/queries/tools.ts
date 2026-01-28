@@ -15,6 +15,7 @@ export async function getTools(): Promise<ToolWithCategory[]> {
       categories (*)
     `)
     .eq("is_archived", false)
+    .is("deleted_at", null)
     .order("name", { ascending: true });
 
   if (error) {
@@ -33,6 +34,7 @@ export async function getToolsByCategory(categoryId: string): Promise<Tool[]> {
     .select("*")
     .eq("category_id", categoryId)
     .eq("is_archived", false)
+    .is("deleted_at", null)
     .order("name", { ascending: true });
 
   if (error) {
@@ -53,6 +55,7 @@ export async function searchTools(query: string): Promise<ToolWithCategory[]> {
       categories (*)
     `)
     .eq("is_archived", false)
+    .is("deleted_at", null)
     .ilike("name", `%${query}%`)
     .order("name", { ascending: true });
 
@@ -78,7 +81,8 @@ export async function getToolsWithUserOrder(): Promise<ToolWithCategory[]> {
       *,
       categories (*)
     `)
-    .eq("is_archived", false);
+    .eq("is_archived", false)
+    .is("deleted_at", null);
 
   if (toolsError) {
     console.error("Error fetching tools:", toolsError);
