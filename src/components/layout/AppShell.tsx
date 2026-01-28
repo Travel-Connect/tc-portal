@@ -1,5 +1,6 @@
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
+import { SoundButtons } from "@/components/fun/SoundButtons";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -16,6 +17,7 @@ export function AppShell({ children, userEmail, isAdmin, failedTaskCount }: AppS
         <Header userEmail={userEmail} />
         <main className="flex-1 p-6">{children}</main>
       </div>
+      <SoundButtons />
     </div>
   );
 }
