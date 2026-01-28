@@ -109,16 +109,24 @@ Write-Host "Scanning for secrets..." -ForegroundColor Yellow
 $secretPatterns = @(
     @{ Label = "JWT token";           Pattern = '(?<!payload=)eyJ[A-Za-z0-9_\-]{30,}' },
     @{ Label = "Bearer token";        Pattern = 'Bearer\s+[A-Za-z0-9._\-]{20,}' },
-    @{ Label = "PASSWORD with value"; Pattern = '(?i)_PASSWORD\s*[:=]\s*(?!process\.env|\$\{\{|secrets\.|your[\-_]|<|os\.environ)\S{4,}' },
-    @{ Label = "SECRET with value";   Pattern = '(?i)_SECRET\s*[:=]\s*(?!process\.env|\$\{\{|secrets\.|<|os\.environ)\S{10,}' },
-    @{ Label = "PRIVATE_KEY value";   Pattern = '(?i)PRIVATE_KEY\s*[:=]\s*(?!process\.env|\$\{\{|secrets\.|os\.environ)\S{10,}' },
+    @{ Label = "PASSWORD with value"; Pattern = '(?i)_PASSWORD\s*[:=]\s*(?!process\.env|\$\{\{|secrets\.|your[\-_]|<|os\.environ|example|dummy)\S{4,}' },
+    @{ Label = "SECRET with value";   Pattern = '(?i)_SECRET\s*[:=]\s*(?!process\.env|\$\{\{|secrets\.|<|os\.environ|example|dummy)\S{10,}' },
+    @{ Label = "PRIVATE_KEY value";   Pattern = '(?i)PRIVATE_KEY\s*[:=]\s*(?!process\.env|\$\{\{|secrets\.|os\.environ|example|dummy)\S{10,}' },
     @{ Label = "Supabase project URL"; Pattern = 'https://[a-z]{10,}\.supabase\.co' },
-    @{ Label = "machine_key value";   Pattern = '"machine_key"\s*:\s*"(?!your[\-_]|<)[^"]{10,}"' }
+    @{ Label = "machine_key value";   Pattern = '"machine_key"\s*:\s*"(?!your[\-_]|<|example|dummy)[^"]{10,}"' },
+    @{ Label = "MACHINE_KEY env value"; Pattern = '(?i)(RUNNER_MACHINE_KEY|HELPER_MACHINE_KEY)\s*[:=]\s*(?!process\.env|\$\{\{|secrets\.|<|os\.environ|example|dummy|your[\-_])\S{6,}' },
+    @{ Label = "WEBHOOK_SECRET value"; Pattern = '(?i)WEBHOOK_SECRET\s*[:=]\s*(?!process\.env|\$\{\{|secrets\.|<|os\.environ|example|dummy|\$env:)\S{6,}' },
+    @{ Label = "X-Machine-Key header"; Pattern = 'X-Machine-Key["\s:]+(?!config\[|headers|process\.env|\$env:)[A-Za-z0-9_\-]{10,}' }
 )
 
 # Lines containing these strings are safe (URL scheme payloads, etc.)
 $safeLinePatterns = @(
-    'tcportal://'
+    'tcportal://',
+    'your-machine-key',
+    'your-runner-key',
+    'your-secret-key',
+    'staging-runner-key',
+    'xxx-staging-'
 )
 
 $binaryExts = @('.png','.jpg','.jpeg','.gif','.ico','.woff','.woff2','.ttf','.eot','.zip','.gz','.br','.map')
