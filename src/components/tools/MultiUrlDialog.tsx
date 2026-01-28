@@ -65,7 +65,9 @@ export function MultiUrlDialog({
     setPopupBlocked(false);
     let blocked = false;
     for (const url of urls) {
-      const w = window.open(url, "_blank", "noopener,noreferrer");
+      // noopener を features 引数に渡すと仕様上 null が返るため、
+      // ブロック検知には features なしで開く
+      const w = window.open(url, "_blank");
       if (!w) {
         blocked = true;
       }
