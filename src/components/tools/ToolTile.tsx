@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Tool } from "@/types/database";
+import { isUrlRunConfig } from "@/types/database";
 import { ToolIcon } from "./ToolIcon";
 import { ExecuteConfirmDialog } from "./ExecuteConfirmDialog";
+import { MultiUrlDialog } from "./MultiUrlDialog";
 import {
   isSafeHelperTool,
   requiresConfirmation,
@@ -39,6 +41,10 @@ export function ToolTile({ tool, disableLink = false, accentColor }: ToolTilePro
 
     switch (tool.execution_mode) {
       case "open":
+        if (hasMultiUrl) {
+          setDialogOpen(true);
+          return;
+        }
         if ((tool.tool_type === "url" || tool.tool_type === "sheet") && tool.target) {
           window.open(tool.target, "_blank", "noopener,noreferrer");
           return;
@@ -63,6 +69,7 @@ export function ToolTile({ tool, disableLink = false, accentColor }: ToolTilePro
     }
   };
 
+  const hasMultiUrl = isUrlRunConfig(tool.run_config);
   const needsConfirmation = requiresConfirmation(tool);
 
   // アクセントカラーがある場合、背景を薄く染める
@@ -83,6 +90,17 @@ export function ToolTile({ tool, disableLink = false, accentColor }: ToolTilePro
       <span className="text-sm font-medium text-center line-clamp-2">{tool.name}</span>
     </div>
   );
+
+  if (hasMultiUrl) {
+    return (
+      <>
+        {tileContent}
+        <MultiUrlDialog tool={tool} open={dialogOpen} onOpenChange={setDialogOpen}>
+          <span className="hidden" />
+        </MultiUrlDialog>
+      </>
+    );
+  }
 
   if (needsConfirmation) {
     return (

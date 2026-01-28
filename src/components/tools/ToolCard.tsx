@@ -7,10 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Tool, Category } from "@/types/database";
-import { TOOL_TYPE_LABELS, TOOL_TYPE_VARIANTS } from "@/types/database";
+import { TOOL_TYPE_LABELS, TOOL_TYPE_VARIANTS, isUrlRunConfig } from "@/types/database";
 import { ToolIcon } from "./ToolIcon";
 import { togglePin } from "@/lib/actions/favorites";
 import { ExecuteConfirmDialog } from "./ExecuteConfirmDialog";
+import { MultiUrlDialog } from "./MultiUrlDialog";
 import {
   isSafeHelperTool,
   requiresConfirmation,
@@ -87,6 +88,11 @@ export function ToolCard({
     // execution_modeに応じた処理
     switch (tool.execution_mode) {
       case "open":
+        if (hasMultiUrl) {
+          // 複数URLモーダルを開く
+          setDialogOpen(true);
+          return;
+        }
         // URL/Sheet（Google Sheets）タイプは新しいタブで開く
         if ((tool.tool_type === "url" || tool.tool_type === "sheet") && tool.target) {
           window.open(tool.target, "_blank", "noopener,noreferrer");
@@ -117,11 +123,15 @@ export function ToolCard({
     }
   };
 
+  // 複数URL判定
+  const hasMultiUrl = isUrlRunConfig(tool.run_config);
+
   // 確認モーダルが必要かどうか
   const needsConfirmation = requiresConfirmation(tool);
 
-  // 実行ボタンを表示するか（確認が必要なツールのみ）
-  const showExecuteButton = SHOW_EXECUTE_BUTTON_TYPES.includes(tool.tool_type);
+  // 実行ボタンを表示するか（確認が必要なツール + 複数URLツール）
+  const showExecuteButton =
+    SHOW_EXECUTE_BUTTON_TYPES.includes(tool.tool_type) || hasMultiUrl;
 
   // アクセントカラーがある場合、背景を薄く染める
   const cardStyle = accentColor
@@ -180,16 +190,29 @@ export function ToolCard({
             <div className="flex items-center gap-1 ml-2 flex-shrink-0">
               {showExecuteButton && (
                 <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-                  <ExecuteConfirmDialog tool={tool} open={dialogOpen} onOpenChange={setDialogOpen}>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      title="実行"
-                    >
-                      <Play className="w-4 h-4 text-green-600" />
-                    </Button>
-                  </ExecuteConfirmDialog>
+                  {hasMultiUrl ? (
+                    <MultiUrlDialog tool={tool} open={dialogOpen} onOpenChange={setDialogOpen}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        title="実行"
+                      >
+                        <Play className="w-4 h-4 text-green-600" />
+                      </Button>
+                    </MultiUrlDialog>
+                  ) : (
+                    <ExecuteConfirmDialog tool={tool} open={dialogOpen} onOpenChange={setDialogOpen}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        title="実行"
+                      >
+                        <Play className="w-4 h-4 text-green-600" />
+                      </Button>
+                    </ExecuteConfirmDialog>
+                  )}
                 </div>
               )}
               <Button
@@ -211,6 +234,18 @@ export function ToolCard({
       </CardContent>
     </Card>
   );
+
+  // 複数URLツールのカード外ダイアログ
+  if (hasMultiUrl && !showExecuteButton) {
+    return (
+      <>
+        {cardContent}
+        <MultiUrlDialog tool={tool} open={dialogOpen} onOpenChange={setDialogOpen}>
+          <span className="hidden" />
+        </MultiUrlDialog>
+      </>
+    );
+  }
 
   // 確認ダイアログが必要なツールは、ダイアログをカード外に配置
   if (needsConfirmation && !showExecuteButton) {

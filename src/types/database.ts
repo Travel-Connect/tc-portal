@@ -57,7 +57,16 @@ export interface FolderSetConfig {
   paths: string[];
 }
 
-export type RunConfig = PythonRunnerConfig | PadRunConfig | FolderSetConfig;
+export interface UrlRunConfig {
+  open_urls: string[];
+  open_behavior: "modal_list";
+}
+
+export type RunConfig = PythonRunnerConfig | PadRunConfig | FolderSetConfig | UrlRunConfig;
+
+export function isUrlRunConfig(config: RunConfig | null): config is UrlRunConfig {
+  return config !== null && "open_urls" in config && Array.isArray((config as UrlRunConfig).open_urls);
+}
 
 export interface Profile {
   id: string;

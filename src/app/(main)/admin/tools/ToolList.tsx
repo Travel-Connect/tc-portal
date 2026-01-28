@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { Tool, Category, IconMode, FolderSetConfig, ToolUserPreference } from "@/types/database";
-import { TOOL_TYPE_LABELS } from "@/types/database";
+import { TOOL_TYPE_LABELS, isUrlRunConfig } from "@/types/database";
 import { getEffectiveColor } from "@/types/database";
 import { createTool, updateTool, archiveTool, uploadToolIcon } from "@/lib/actions/tools";
 import { ToolIcon, ToolColorPicker } from "@/components/tools";
@@ -32,6 +32,7 @@ const defaultForm: FormState = {
   icon_key: "Folder",
   icon_path: "",
   paths: "",
+  open_urls: "",
   tags: [],
   excel_open_mode: "file",
   excel_folder_path: "",
@@ -84,6 +85,11 @@ export function ToolList({ initialTools, categories, colorPreferences: initialCo
         paths = config.paths.join("\n");
       }
     }
+    // url の場合は run_config.open_urls から復元
+    let openUrls = "";
+    if (tool.tool_type === "url" && isUrlRunConfig(tool.run_config)) {
+      openUrls = tool.run_config.open_urls.join("\n");
+    }
     setForm({
       name: tool.name,
       category_id: tool.category_id,
@@ -94,6 +100,7 @@ export function ToolList({ initialTools, categories, colorPreferences: initialCo
       icon_key: tool.icon_key || "Folder",
       icon_path: tool.icon_path || "",
       paths,
+      open_urls: openUrls,
       tags: tool.tags || [],
       excel_open_mode: tool.excel_open_mode || "file",
       excel_folder_path: tool.excel_folder_path || "",
@@ -107,7 +114,7 @@ export function ToolList({ initialTools, categories, colorPreferences: initialCo
     setError(null);
   };
 
-  // folder_set の場合に run_config を生成
+  // tool_type に応じて run_config を生成
   const buildRunConfig = () => {
     if (form.tool_type === "folder_set" && form.paths.trim()) {
       const paths = form.paths
@@ -116,6 +123,15 @@ export function ToolList({ initialTools, categories, colorPreferences: initialCo
         .filter((p) => p.length > 0);
       if (paths.length > 0) {
         return { paths };
+      }
+    }
+    if (form.tool_type === "url" && form.open_urls.trim()) {
+      const urls = form.open_urls
+        .split("\n")
+        .map((u) => u.trim())
+        .filter((u) => u.length > 0);
+      if (urls.length > 0) {
+        return { open_urls: urls, open_behavior: "modal_list" as const };
       }
     }
     return null;

@@ -30,6 +30,7 @@ export interface FormState {
   icon_key: string;
   icon_path: string;
   paths: string; // folder_set用: 1行1パス
+  open_urls: string; // url用: 1行1URL
   tags: string[];
   pendingIconFile?: File | null;
   // Excel専用
@@ -221,6 +222,23 @@ export function ToolForm({
             />
             <p className="text-xs text-muted-foreground">
               複数のフォルダを同時に開きます。1行に1つのパスを入力してください。
+            </p>
+          </div>
+        )}
+        {form.tool_type === "url" && (
+          <div className="space-y-2">
+            <Label htmlFor="open_urls">複数URL（1行1URL・任意）</Label>
+            <Textarea
+              id="open_urls"
+              value={form.open_urls}
+              onChange={(e) => setForm({ ...form, open_urls: e.target.value })}
+              placeholder={"https://example.com/page1\nhttps://example.com/page2"}
+              rows={5}
+              className="font-mono text-sm"
+            />
+            <p className="text-xs text-muted-foreground">
+              複数のURLを同時に開きます。1行に1つのURLを入力してください（最大10件）。
+              空の場合はターゲットURLのみを開きます。
             </p>
           </div>
         )}
