@@ -4,7 +4,7 @@ from pathlib import Path
 import requests
 
 # Load .env.local
-_env_file = Path(__file__).resolve().parent.parent / ".env.local"
+_env_file = Path(__file__).resolve().parent.parent.parent / ".env.local"
 if _env_file.exists():
     with open(_env_file, "r", encoding="utf-8") as _f:
         for _line in _f:

@@ -1,8 +1,0 @@
-{
-  "category_id": "11111111-1111-1111-1111-111111111103",
-  "name": "BATテスト",
-  "tool_type": "bat",
-  "icon_mode": "lucide",
-  "icon_key": "Terminal",
-  "target": "C:\\Users\\tckam\\projects\\tc-portal\\runner\\test_bat.bat"
-}

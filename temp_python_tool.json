@@ -1,8 +1,0 @@
-{
-  "category_id": "11111111-1111-1111-1111-111111111103",
-  "name": "Pythonテスト（イベント情報）",
-  "tool_type": "python_runner",
-  "icon_mode": "lucide",
-  "icon_key": "Code",
-  "target": "%OneDrive%\\009.個人フォルダ\\神里個人フォルダ\\イベント情報取得ツール\\src\\main.py"
-}

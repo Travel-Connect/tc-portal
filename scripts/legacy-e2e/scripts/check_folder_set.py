@@ -1,10 +1,10 @@
-"""Check sheet tools configuration in the database."""
+"""Check folder_set tools configuration in the database."""
 import os
 from pathlib import Path
 import requests
 
 # Load .env.local
-_env_file = Path(__file__).resolve().parent.parent.parent / ".env.local"
+_env_file = Path(__file__).resolve().parent.parent.parent.parent / ".env.local"
 if _env_file.exists():
     with open(_env_file, "r", encoding="utf-8") as _f:
         for _line in _f:
@@ -22,38 +22,34 @@ headers = {
 }
 
 
-def get_sheet_tools():
-    """Get all sheet tools."""
+def get_folder_set_tools():
+    """Get all folder_set tools."""
     response = requests.get(
-        f"{SUPABASE_URL}/rest/v1/tools?tool_type=eq.sheet&select=id,name,tool_type,execution_mode,target",
+        f"{SUPABASE_URL}/rest/v1/tools?tool_type=eq.folder_set&select=id,name,tool_type,execution_mode,run_config,target",
         headers=headers,
     )
     return response.json()
 
 
 def main():
-    tools = get_sheet_tools()
-    print(f"Found {len(tools)} sheet tools:\n")
+    tools = get_folder_set_tools()
+    print(f"Found {len(tools)} folder_set tools:\n")
 
     for tool in tools:
         print(f"ID: {tool['id']}")
         print(f"Name: {tool['name']}")
         print(f"tool_type: {tool['tool_type']}")
         print(f"execution_mode: {tool['execution_mode']}")
+        print(f"run_config: {tool['run_config']}")
         print(f"target: {tool['target']}")
         print("-" * 50)
 
-        # Check issues - sheet tools should open URLs in browser
-        # So execution_mode should be 'open' and target should be a URL
+        # Check issues
         issues = []
-        if tool['target'] and tool['target'].startswith('http'):
-            # It's a URL, should be 'open' mode
-            if tool['execution_mode'] != 'open':
-                issues.append(f"URL-based sheet should have execution_mode='open', got '{tool['execution_mode']}'")
-        else:
-            # It's a local file path, needs helper
-            if tool['execution_mode'] != 'helper':
-                issues.append(f"Local file sheet should have execution_mode='helper', got '{tool['execution_mode']}'")
+        if tool['execution_mode'] != 'helper':
+            issues.append(f"execution_mode should be 'helper', got '{tool['execution_mode']}'")
+        if not tool['run_config'] or not tool['run_config'].get('paths'):
+            issues.append("run_config.paths is missing or empty")
 
         if issues:
             print("ISSUES:")
