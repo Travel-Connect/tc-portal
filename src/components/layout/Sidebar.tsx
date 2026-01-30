@@ -9,6 +9,7 @@ import {
   Bell,
   AlertTriangle,
   Settings,
+  MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +24,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { href: "/", label: "ホーム", icon: <Home className="w-5 h-5" /> },
   { href: "/tools", label: "ツール", icon: <Wrench className="w-5 h-5" /> },
+  { href: "/messages", label: "メッセージ", icon: <MessageSquare className="w-5 h-5" />, badgeKey: "unreadMessages" },
   { href: "/runs", label: "実行履歴", icon: <History className="w-5 h-5" /> },
   { href: "/announcements", label: "お知らせ", icon: <Bell className="w-5 h-5" /> },
   { href: "/incidents", label: "障害", icon: <AlertTriangle className="w-5 h-5" />, badgeKey: "jobError" },
@@ -32,9 +34,10 @@ const navItems: NavItem[] = [
 interface SidebarProps {
   isAdmin?: boolean;
   failedTaskCount?: number;
+  unreadMessageCount?: number;
 }
 
-export function Sidebar({ isAdmin = false, failedTaskCount = 0 }: SidebarProps) {
+export function Sidebar({ isAdmin = false, failedTaskCount = 0, unreadMessageCount = 0 }: SidebarProps) {
   const pathname = usePathname();
 
   const filteredItems = navItems.filter(
@@ -43,6 +46,7 @@ export function Sidebar({ isAdmin = false, failedTaskCount = 0 }: SidebarProps) 
 
   const getBadgeCount = (badgeKey?: string): number => {
     if (badgeKey === "jobError") return failedTaskCount;
+    if (badgeKey === "unreadMessages") return unreadMessageCount;
     return 0;
   };
 
