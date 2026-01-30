@@ -70,6 +70,7 @@ export function isUrlRunConfig(config: RunConfig | null): config is UrlRunConfig
 export interface Profile {
   id: string;
   email: string;
+  display_name: string | null;
   role: UserRole;
   created_at: string;
 }
@@ -338,3 +339,114 @@ export const TOOL_TYPE_OPTIONS: { value: ToolType; label: string }[] = [
   { value: "folder_set", label: "フォルダセット (複数)" },
   { value: "bat", label: "BAT (バッチファイル)" },
 ];
+
+// =====================================================
+// Chat Types
+// =====================================================
+
+export interface ChatChannel {
+  id: string;
+  slug: string;
+  name: string;
+  is_archived: boolean;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  channel_id: string;
+  parent_id: string | null;
+  body: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string | null;
+  deleted_at: string | null;
+}
+
+export interface ChatTag {
+  id: string;
+  name: string;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface ChatThreadTag {
+  thread_id: string;
+  tag_id: string;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface ChatThreadRead {
+  thread_id: string;
+  user_id: string;
+  last_read_at: string;
+}
+
+export interface ChatMessageMention {
+  message_id: string;
+  mentioned_user_id: string;
+}
+
+export interface ChatAttachment {
+  id: string;
+  message_id: string;
+  bucket_id: string;
+  object_path: string;
+  file_name: string;
+  mime_type: string | null;
+  size_bytes: number | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+// =====================================================
+// Chat Extended Types (with relations)
+// =====================================================
+
+export interface ChatMessageWithAuthor extends ChatMessage {
+  profiles?: Profile | null;
+  attachments?: ChatAttachment[];
+  mentions?: ChatMessageMention[];
+}
+
+export interface ChatThreadWithDetails extends ChatMessage {
+  profiles?: Profile | null;
+  reply_count?: number;
+  last_reply_at?: string | null;
+  tags?: ChatTag[];
+  is_read?: boolean;
+}
+
+export interface ChatChannelWithUnread extends ChatChannel {
+  unread_count?: number;
+}
+
+// =====================================================
+// Chat Utility Functions
+// =====================================================
+
+/**
+ * メッセージがスレッド親かどうかを判定
+ */
+export function isThreadParent(message: ChatMessage): boolean {
+  return message.parent_id === null;
+}
+
+/**
+ * メッセージが論理削除されているかどうかを判定
+ */
+export function isMessageDeleted(message: ChatMessage): boolean {
+  return message.deleted_at !== null;
+}
+
+/**
+ * @メンション形式からユーザー名を抽出
+ * 例: "@john" → "john", "@山田太郎" → "山田太郎"
+ */
+export function extractMentions(body: string): string[] {
+  const mentionRegex = /@([^\s@]+)/g;
+  const matches = body.matchAll(mentionRegex);
+  return Array.from(matches, (m) => m[1]);
+}
