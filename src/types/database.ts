@@ -348,6 +348,7 @@ export interface ChatChannel {
   id: string;
   slug: string;
   name: string;
+  description: string | null;
   is_archived: boolean;
   created_by: string | null;
   created_at: string;
@@ -421,6 +422,22 @@ export interface ChatThreadWithDetails extends ChatMessage {
 
 export interface ChatChannelWithUnread extends ChatChannel {
   unread_count?: number;
+}
+
+// 検索結果の型
+export interface ChatSearchResult {
+  thread_id: string;
+  thread_body: string;
+  channel_id: string;
+  channel_name: string;
+  created_by: string | null;
+  created_at: string;
+  author_name: string | null;
+  matched_message_id: string;
+  matched_body: string;
+  matched_at: string;
+  is_reply: boolean;
+  tags: ChatTag[];
 }
 
 // =====================================================

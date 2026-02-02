@@ -5,8 +5,11 @@ import { X, Send, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { createReply, markThreadAsRead } from "@/lib/actions/chat";
-import type { ChatMessageWithAuthor, Profile } from "@/types/database";
+import { createReply, markThreadAsRead, uploadAttachment } from "@/lib/actions/chat";
+import { TagInput } from "./TagInput";
+import { MessageItem } from "./MessageItem";
+import { FileUpload } from "./FileUpload";
+import type { ChatMessageWithAuthor, ChatTag, ChatAttachment, Profile } from "@/types/database";
 
 interface ThreadDetailProps {
   threadId: string;
@@ -16,9 +19,13 @@ interface ThreadDetailProps {
 export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
   const [thread, setThread] = useState<ChatMessageWithAuthor | null>(null);
   const [replies, setReplies] = useState<ChatMessageWithAuthor[]>([]);
+  const [tags, setTags] = useState<ChatTag[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [replyBody, setReplyBody] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [channelId, setChannelId] = useState<string | null>(null);
   const isSubmittingRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -28,12 +35,19 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
       setIsLoading(true);
       const supabase = createClient();
 
+      // 現在のユーザーIDを取得
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setCurrentUserId(user.id);
+      }
+
       // 親メッセージを取得
       const { data: threadData, error: threadError } = await supabase
         .from("chat_messages")
         .select(`
           *,
-          profiles (id, email, display_name, role)
+          profiles (id, email, display_name, role),
+          chat_attachments (*)
         `)
         .eq("id", threadId)
         .single();
@@ -44,14 +58,33 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
         return;
       }
 
-      setThread(threadData);
+      // chat_attachments を attachments にマッピング
+      const threadWithAttachments = {
+        ...threadData,
+        attachments: threadData.chat_attachments as ChatAttachment[] | undefined,
+      };
+      delete (threadWithAttachments as Record<string, unknown>).chat_attachments;
+
+      setThread(threadWithAttachments);
+      setChannelId(threadData.channel_id);
+
+      // タグを取得
+      const { data: threadTags } = await supabase
+        .from("chat_thread_tags")
+        .select(`chat_tags (*)`)
+        .eq("thread_id", threadId);
+
+      setTags(
+        threadTags?.map((t) => t.chat_tags as unknown as ChatTag).filter(Boolean) || []
+      );
 
       // 返信を取得
       const { data: repliesData, error: repliesError } = await supabase
         .from("chat_messages")
         .select(`
           *,
-          profiles (id, email, display_name, role)
+          profiles (id, email, display_name, role),
+          chat_attachments (*)
         `)
         .eq("parent_id", threadId)
         .is("deleted_at", null)
@@ -60,7 +93,15 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
       if (repliesError) {
         console.error("Error fetching replies:", repliesError);
       } else {
-        setReplies(repliesData || []);
+        // chat_attachments を attachments にマッピング
+        const repliesWithAttachments = (repliesData || []).map((r) => ({
+          ...r,
+          attachments: r.chat_attachments as ChatAttachment[] | undefined,
+        }));
+        repliesWithAttachments.forEach((r) => {
+          delete (r as Record<string, unknown>).chat_attachments;
+        });
+        setReplies(repliesWithAttachments);
       }
 
       // 既読をマーク
@@ -72,11 +113,12 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
     fetchThread();
   }, [threadId]);
 
-  // Realtime購読（返信）
+  // Realtime購読（返信のINSERT/UPDATE、親スレッドのUPDATE）
   useEffect(() => {
     const supabase = createClient();
     const channel = supabase
       .channel(`thread:${threadId}`)
+      // 返信のINSERT
       .on(
         "postgres_changes",
         {
@@ -102,6 +144,60 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
           setReplies((prev) => [...prev, newMessage]);
         }
       )
+      // 返信のUPDATE（編集・削除）
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "chat_messages",
+          filter: `parent_id=eq.${threadId}`,
+        },
+        async (payload) => {
+          const updatedReply = payload.new as ChatMessageWithAuthor;
+
+          // プロフィール情報を取得
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", updatedReply.created_by)
+            .single();
+
+          const updatedMessage: ChatMessageWithAuthor = {
+            ...updatedReply,
+            profiles: profile as Profile | null,
+          };
+
+          setReplies((prev) =>
+            prev.map((r) => (r.id === updatedMessage.id ? updatedMessage : r))
+          );
+        }
+      )
+      // 親スレッドのUPDATE（編集・削除）
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "chat_messages",
+          filter: `id=eq.${threadId}`,
+        },
+        async (payload) => {
+          const updatedThread = payload.new as ChatMessageWithAuthor;
+
+          // プロフィール情報を取得
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", updatedThread.created_by)
+            .single();
+
+          setThread({
+            ...updatedThread,
+            profiles: profile as Profile | null,
+          });
+        }
+      )
       .subscribe();
 
     return () => {
@@ -123,8 +219,20 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
     const result = await createReply(threadId, replyBody.trim());
 
     if (result.success && result.message) {
+      // 添付ファイルをアップロード
+      if (selectedFiles.length > 0 && channelId) {
+        for (const file of selectedFiles) {
+          await uploadAttachment(
+            result.message.id,
+            channelId,
+            threadId,
+            file
+          );
+        }
+      }
       // Realtimeで追加されるため、ここでは追加しない
       setReplyBody("");
+      setSelectedFiles([]);
     } else {
       console.error("Failed to create reply:", result.error);
     }
@@ -138,20 +246,6 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
       e.preventDefault();
       handleSubmit();
     }
-  };
-
-  const formatDateTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleString("ja-JP", {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
-  const getDisplayName = (message: ChatMessageWithAuthor) => {
-    return message.profiles?.display_name || message.profiles?.email?.split("@")[0] || "不明";
   };
 
   if (isLoading) {
@@ -183,34 +277,52 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
       {/* メッセージ一覧 */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* 親メッセージ */}
-        <div className="bg-muted/30 rounded-lg p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="font-medium text-sm">{getDisplayName(thread)}</span>
-            <span className="text-xs text-muted-foreground">
-              {formatDateTime(thread.created_at)}
-            </span>
-          </div>
-          <p className="text-sm whitespace-pre-wrap">{thread.body}</p>
+        <div className="group">
+          <MessageItem
+            message={thread}
+            currentUserId={currentUserId || ""}
+            variant="thread"
+            onUpdate={(updatedMessage) => setThread(updatedMessage)}
+            onDelete={() => {
+              // 親が削除されても表示は維持（削除済み表示に切り替わる）
+              setThread((prev) => prev ? { ...prev, deleted_at: new Date().toISOString() } : null);
+            }}
+          />
+          {/* タグ（削除されていない場合のみ表示） */}
+          {!thread.deleted_at && (
+            <div className="mt-3 pt-3 border-t border-muted bg-muted/30 rounded-b-lg px-4 pb-4 -mt-4">
+              <TagInput
+                threadId={threadId}
+                initialTags={tags}
+                onTagsChange={setTags}
+              />
+            </div>
+          )}
         </div>
 
         {/* 返信 */}
         {replies.length > 0 && (
           <div className="border-l-2 border-muted pl-4 space-y-3">
             {replies.map((reply) => (
-              <div key={reply.id} className="bg-background rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="font-medium text-sm">{getDisplayName(reply)}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {formatDateTime(reply.created_at)}
-                  </span>
-                </div>
-                <p className="text-sm whitespace-pre-wrap">
-                  {reply.deleted_at ? (
-                    <span className="text-muted-foreground italic">このメッセージは削除されました</span>
-                  ) : (
-                    reply.body
-                  )}
-                </p>
+              <div key={reply.id} className="group">
+                <MessageItem
+                  message={reply}
+                  currentUserId={currentUserId || ""}
+                  variant="reply"
+                  onUpdate={(updatedMessage) => {
+                    setReplies((prev) =>
+                      prev.map((r) => (r.id === updatedMessage.id ? updatedMessage : r))
+                    );
+                  }}
+                  onDelete={(messageId) => {
+                    // 削除済みに更新（リストからは削除しない）
+                    setReplies((prev) =>
+                      prev.map((r) =>
+                        r.id === messageId ? { ...r, deleted_at: new Date().toISOString() } : r
+                      )
+                    );
+                  }}
+                />
               </div>
             ))}
           </div>
@@ -221,28 +333,35 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
 
       {/* 返信入力 */}
       <div className="p-4 border-t bg-muted/20">
-        <div className="relative">
-          <Textarea
-            placeholder="返信を入力..."
-            value={replyBody}
-            onChange={(e) => setReplyBody(e.target.value)}
-            onKeyDown={handleKeyDown}
-            className="min-h-[60px] pr-10 resize-none text-sm"
+        <div className="space-y-2">
+          <div className="relative">
+            <Textarea
+              placeholder="返信を入力..."
+              value={replyBody}
+              onChange={(e) => setReplyBody(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className="min-h-[60px] pr-10 resize-none text-sm"
+              disabled={isSubmitting}
+            />
+            <Button
+              size="icon"
+              variant="ghost"
+              className="absolute right-1 bottom-1 h-8 w-8"
+              onClick={handleSubmit}
+              disabled={!replyBody.trim() || isSubmitting}
+            >
+              {isSubmitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+          <FileUpload
+            files={selectedFiles}
+            onFilesChange={setSelectedFiles}
             disabled={isSubmitting}
           />
-          <Button
-            size="icon"
-            variant="ghost"
-            className="absolute right-1 bottom-1 h-8 w-8"
-            onClick={handleSubmit}
-            disabled={!replyBody.trim() || isSubmitting}
-          >
-            {isSubmitting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-          </Button>
         </div>
       </div>
     </div>

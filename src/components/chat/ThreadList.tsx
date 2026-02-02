@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { MessageSquare, Send, Loader2 } from "lucide-react";
+import { MessageSquare, Send, Loader2, X, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { createThread } from "@/lib/actions/chat";
-import type { ChatThreadWithDetails } from "@/types/database";
+import type { ChatThreadWithDetails, ChatTag } from "@/types/database";
 
 interface ThreadListProps {
   channelId: string | null;
@@ -16,6 +18,11 @@ interface ThreadListProps {
   onSelectThread: (threadId: string) => void;
   onNewThread: (thread: ChatThreadWithDetails) => void;
   isLoading: boolean;
+  allTags: ChatTag[];
+  selectedTagIds: string[];
+  onTagFilterChange: (tagIds: string[]) => void;
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
 }
 
 export function ThreadList({
@@ -26,6 +33,11 @@ export function ThreadList({
   onSelectThread,
   onNewThread,
   isLoading,
+  allTags,
+  selectedTagIds,
+  onTagFilterChange,
+  searchQuery,
+  onSearchChange,
 }: ThreadListProps) {
   const [newThreadBody, setNewThreadBody] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -87,6 +99,60 @@ export function ThreadList({
         </h2>
       </div>
 
+      {/* 検索バー */}
+      {channelId && (
+        <div className="px-3 py-2 border-b">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="スレッドを検索..."
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="h-8 pl-8 text-sm"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => onSearchChange("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* タグフィルタ */}
+      {allTags.length > 0 && (
+        <div className="px-3 py-2 border-b bg-muted/10 flex flex-wrap gap-1">
+          {allTags.map((tag) => {
+            const isSelected = selectedTagIds.includes(tag.id);
+            return (
+              <Badge
+                key={tag.id}
+                variant={isSelected ? "default" : "outline"}
+                className={cn(
+                  "cursor-pointer text-xs",
+                  isSelected && "pr-1"
+                )}
+                onClick={() => {
+                  if (isSelected) {
+                    onTagFilterChange(selectedTagIds.filter((id) => id !== tag.id));
+                  } else {
+                    onTagFilterChange([...selectedTagIds, tag.id]);
+                  }
+                }}
+              >
+                {tag.name}
+                {isSelected && (
+                  <X className="h-3 w-3 ml-1" />
+                )}
+              </Badge>
+            );
+          })}
+        </div>
+      )}
+
       {/* 新規スレッド作成 */}
       {channelId && (
         <div className="p-3 border-b bg-muted/20">
@@ -144,8 +210,11 @@ export function ThreadList({
                   )}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-sm font-medium line-clamp-2 flex-1">
-                      {thread.body}
+                    <p className={cn(
+                      "text-sm font-medium line-clamp-2 flex-1",
+                      thread.deleted_at && "text-muted-foreground italic"
+                    )}>
+                      {thread.deleted_at ? "[削除済み]" : thread.body}
                     </p>
                     <span className="text-xs text-muted-foreground whitespace-nowrap">
                       {formatDate(thread.created_at)}

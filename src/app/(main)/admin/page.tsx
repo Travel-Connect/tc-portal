@@ -1,6 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Settings, Wrench, FolderTree, Users, Bell, AlertTriangle, Monitor } from "lucide-react";
+import { Settings, Wrench, FolderTree, Users, Bell, AlertTriangle, Monitor, MessageSquare } from "lucide-react";
 import Link from "next/link";
 
 const adminSections = [
@@ -23,6 +23,13 @@ const adminSections = [
     description: "BAT/Pythonタスク監視の登録・編集",
     icon: Monitor,
     href: "/admin/monitors",
+    implemented: true,
+  },
+  {
+    title: "チャンネル管理",
+    description: "メッセージチャンネルの追加・編集",
+    icon: MessageSquare,
+    href: "/admin/channels",
     implemented: true,
   },
   {
