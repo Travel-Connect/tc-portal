@@ -144,6 +144,117 @@ export async function markThreadAsRead(
 }
 
 /**
+ * チャンネル内の全スレッドを既読にする
+ */
+export async function markAllThreadsAsRead(
+  channelId: string
+): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "ログインが必要です" };
+  }
+
+  // チャンネル内の全スレッド（親メッセージ）を取得
+  const { data: threads, error: threadsError } = await supabase
+    .from("chat_messages")
+    .select("id")
+    .eq("channel_id", channelId)
+    .is("parent_id", null)
+    .is("deleted_at", null);
+
+  if (threadsError) {
+    console.error("Error fetching threads:", threadsError);
+    return { success: false, error: threadsError.message };
+  }
+
+  if (!threads || threads.length === 0) {
+    return { success: true }; // スレッドがない場合も成功とする
+  }
+
+  // 全スレッドを既読にする
+  const now = new Date().toISOString();
+  const readRecords = threads.map((thread) => ({
+    thread_id: thread.id,
+    user_id: user.id,
+    last_read_at: now,
+  }));
+
+  const { error } = await supabase
+    .from("chat_thread_reads")
+    .upsert(readRecords, {
+      onConflict: "thread_id,user_id",
+    });
+
+  if (error) {
+    console.error("Error marking all threads as read:", error);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/**
+ * 全チャンネルの全スレッドを既読にする
+ */
+export async function markAllChannelsAsRead(): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "ログインが必要です" };
+  }
+
+  // 全チャンネルの全スレッド（親メッセージ）を取得
+  const { data: threads, error: threadsError } = await supabase
+    .from("chat_messages")
+    .select("id")
+    .is("parent_id", null)
+    .is("deleted_at", null);
+
+  if (threadsError) {
+    console.error("Error fetching all threads:", threadsError);
+    return { success: false, error: threadsError.message };
+  }
+
+  if (!threads || threads.length === 0) {
+    return { success: true }; // スレッドがない場合も成功とする
+  }
+
+  // 全スレッドを既読にする
+  const now = new Date().toISOString();
+  const readRecords = threads.map((thread) => ({
+    thread_id: thread.id,
+    user_id: user.id,
+    last_read_at: now,
+  }));
+
+  const { error } = await supabase
+    .from("chat_thread_reads")
+    .upsert(readRecords, {
+      onConflict: "thread_id,user_id",
+    });
+
+  if (error) {
+    console.error("Error marking all channels as read:", error);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/**
  * メッセージを論理削除
  */
 export async function deleteMessage(
@@ -374,7 +485,72 @@ export async function removeTagFromThread(
 }
 
 /**
+ * タグを削除（admin専用）
+ * 関連する chat_thread_tags も CASCADE で削除される
+ */
+export async function deleteTag(
+  tagId: string
+): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "ログインが必要です" };
+  }
+
+  // admin チェック
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (profile?.role !== "admin") {
+    return { success: false, error: "管理者のみタグを削除できます" };
+  }
+
+  const { error } = await supabase
+    .from("chat_tags")
+    .delete()
+    .eq("id", tagId);
+
+  if (error) {
+    console.error("Error deleting tag:", error);
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/admin/channels");
+  revalidatePath("/messages");
+  return { success: true };
+}
+
+/**
+ * 全タグを取得（管理用）
+ */
+export async function getAllTags(): Promise<ChatTag[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("chat_tags")
+    .select("*")
+    .order("name", { ascending: true });
+
+  if (error) {
+    console.error("Error fetching tags:", error);
+    return [];
+  }
+
+  return data || [];
+}
+
+/**
  * ユーザーの未読スレッド数を取得
+ * RPC関数を使用して、返信追加時も正確に未読判定する
  */
 export async function getUnreadCount(): Promise<number> {
   const supabase = await createClient();
@@ -386,20 +562,17 @@ export async function getUnreadCount(): Promise<number> {
     return 0;
   }
 
-  // 全スレッド数を取得
-  const { count: totalThreads } = await supabase
-    .from("chat_messages")
-    .select("*", { count: "exact", head: true })
-    .is("parent_id", null)
-    .is("deleted_at", null);
+  // RPC関数で未読スレッド数を取得
+  const { data, error } = await supabase.rpc("get_total_unread_thread_count", {
+    p_user_id: user.id,
+  });
 
-  // 既読スレッド数を取得
-  const { count: readThreads } = await supabase
-    .from("chat_thread_reads")
-    .select("*", { count: "exact", head: true })
-    .eq("user_id", user.id);
+  if (error) {
+    console.error("Error getting unread count:", error);
+    return 0;
+  }
 
-  return Math.max(0, (totalThreads || 0) - (readThreads || 0));
+  return data || 0;
 }
 
 // ========== 添付ファイル操作 ==========
@@ -681,4 +854,263 @@ export async function updateChannel(
   revalidatePath("/admin/channels");
   revalidatePath("/messages");
   return { success: true, channel: data };
+}
+
+// ========== ユーザー取得（メンション用） ==========
+
+import type { Profile } from "@/types/database";
+
+/**
+ * メンション候補となるユーザー一覧を取得
+ */
+export async function getMentionableUsers(): Promise<Profile[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, email, display_name, role, created_at")
+    .order("display_name", { ascending: true });
+
+  if (error) {
+    console.error("Error fetching users:", error);
+    return [];
+  }
+
+  return data || [];
+}
+
+// ========== リアクション機能 ==========
+
+import type { ReactionSummary, ReactionEmoji } from "@/types/database";
+
+/**
+ * リアクションを追加
+ */
+export async function addReaction(
+  messageId: string,
+  emoji: ReactionEmoji
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "Unauthorized" };
+  }
+
+  const { error } = await supabase.from("chat_message_reactions").insert({
+    message_id: messageId,
+    user_id: user.id,
+    emoji,
+  });
+
+  if (error) {
+    // すでに存在する場合は成功扱い
+    if (error.code === "23505") {
+      return { success: true };
+    }
+    console.error("Error adding reaction:", error);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/**
+ * リアクションを削除
+ */
+export async function removeReaction(
+  messageId: string,
+  emoji: ReactionEmoji
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "Unauthorized" };
+  }
+
+  const { error } = await supabase
+    .from("chat_message_reactions")
+    .delete()
+    .eq("message_id", messageId)
+    .eq("user_id", user.id)
+    .eq("emoji", emoji);
+
+  if (error) {
+    console.error("Error removing reaction:", error);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/**
+ * リアクションをトグル（追加/削除）
+ */
+export async function toggleReaction(
+  messageId: string,
+  emoji: ReactionEmoji
+): Promise<{ success: boolean; added: boolean; error?: string }> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, added: false, error: "Unauthorized" };
+  }
+
+  // 既存のリアクションを確認
+  const { data: existing } = await supabase
+    .from("chat_message_reactions")
+    .select("id")
+    .eq("message_id", messageId)
+    .eq("user_id", user.id)
+    .eq("emoji", emoji)
+    .maybeSingle();
+
+  if (existing) {
+    // 削除
+    const result = await removeReaction(messageId, emoji);
+    return { ...result, added: false };
+  } else {
+    // 追加
+    const result = await addReaction(messageId, emoji);
+    return { ...result, added: true };
+  }
+}
+
+/**
+ * メッセージのリアクション一覧を取得
+ */
+export async function getMessageReactions(
+  messageId: string
+): Promise<ReactionSummary[]> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const currentUserId = user?.id;
+
+  const { data, error } = await supabase
+    .from("chat_message_reactions")
+    .select(`
+      emoji,
+      user_id,
+      profiles (id, display_name)
+    `)
+    .eq("message_id", messageId);
+
+  if (error) {
+    console.error("Error fetching reactions:", error);
+    return [];
+  }
+
+  // 絵文字ごとにグループ化
+  const emojiMap = new Map<string, ReactionSummary>();
+
+  for (const reaction of data || []) {
+    const emoji = reaction.emoji;
+    const profile = reaction.profiles as unknown as { id: string; display_name: string | null } | null;
+
+    if (!emojiMap.has(emoji)) {
+      emojiMap.set(emoji, {
+        emoji,
+        count: 0,
+        users: [],
+        hasReacted: false,
+      });
+    }
+
+    const summary = emojiMap.get(emoji)!;
+    summary.count++;
+    if (profile) {
+      summary.users.push({
+        id: profile.id,
+        display_name: profile.display_name,
+      });
+    }
+    if (reaction.user_id === currentUserId) {
+      summary.hasReacted = true;
+    }
+  }
+
+  return Array.from(emojiMap.values());
+}
+
+/**
+ * 複数メッセージのリアクションを一括取得
+ */
+export async function getMessagesReactions(
+  messageIds: string[]
+): Promise<Map<string, ReactionSummary[]>> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const currentUserId = user?.id;
+
+  if (messageIds.length === 0) {
+    return new Map();
+  }
+
+  const { data, error } = await supabase
+    .from("chat_message_reactions")
+    .select(`
+      message_id,
+      emoji,
+      user_id,
+      profiles (id, display_name)
+    `)
+    .in("message_id", messageIds);
+
+  if (error) {
+    console.error("Error fetching reactions:", error);
+    return new Map();
+  }
+
+  // メッセージIDごと、絵文字ごとにグループ化
+  const result = new Map<string, ReactionSummary[]>();
+
+  for (const reaction of data || []) {
+    const msgId = reaction.message_id;
+    const emoji = reaction.emoji;
+    const profile = reaction.profiles as unknown as { id: string; display_name: string | null } | null;
+
+    if (!result.has(msgId)) {
+      result.set(msgId, []);
+    }
+
+    const summaries = result.get(msgId)!;
+    let summary = summaries.find((s) => s.emoji === emoji);
+
+    if (!summary) {
+      summary = {
+        emoji,
+        count: 0,
+        users: [],
+        hasReacted: false,
+      };
+      summaries.push(summary);
+    }
+
+    summary.count++;
+    if (profile) {
+      summary.users.push({
+        id: profile.id,
+        display_name: profile.display_name,
+      });
+    }
+    if (reaction.user_id === currentUserId) {
+      summary.hasReacted = true;
+    }
+  }
+
+  return result;
 }

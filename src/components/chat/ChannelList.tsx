@@ -1,7 +1,10 @@
 "use client";
 
-import { Hash } from "lucide-react";
+import { useState } from "react";
+import { Hash, CheckCheck, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { markAllChannelsAsRead } from "@/lib/actions/chat";
 import type { ChatChannel } from "@/types/database";
 
 interface ChannelListProps {
@@ -15,14 +18,48 @@ export function ChannelList({
   selectedChannelId,
   onSelectChannel,
 }: ChannelListProps) {
+  const [isMarkingGlobalAsRead, setIsMarkingGlobalAsRead] = useState(false);
   const activeChannels = channels.filter((c) => !c.is_archived);
+
+  const handleMarkAllAsRead = async () => {
+    if (isMarkingGlobalAsRead) return;
+
+    setIsMarkingGlobalAsRead(true);
+    const result = await markAllChannelsAsRead();
+
+    if (result.success) {
+      // ページをリロードして未読バッジを更新
+      window.location.reload();
+    } else {
+      console.error("Failed to mark all channels as read:", result.error);
+    }
+
+    setIsMarkingGlobalAsRead(false);
+  };
 
   return (
     <div className="flex flex-col h-full">
       <div className="p-4 border-b">
-        <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
-          チャンネル
-        </h2>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+            チャンネル
+          </h2>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleMarkAllAsRead}
+          disabled={isMarkingGlobalAsRead}
+          className="w-full h-7 text-xs gap-1"
+          title="全チャンネルの全スレッドを既読にする"
+        >
+          {isMarkingGlobalAsRead ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <CheckCheck className="h-3.5 w-3.5" />
+          )}
+          <span>全チャンネルを既読</span>
+        </Button>
       </div>
       <nav className="flex-1 overflow-y-auto p-2">
         <ul className="space-y-1">

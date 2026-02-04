@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { MessageSquare } from "lucide-react";
 import { isCurrentUserAdmin } from "@/lib/queries/admin";
-import { getAllChannels } from "@/lib/actions/chat";
+import { getAllChannels, getAllTags } from "@/lib/actions/chat";
 import { ChannelAdmin } from "./ChannelAdmin";
 
 export default async function ChannelsAdminPage() {
@@ -11,7 +11,10 @@ export default async function ChannelsAdminPage() {
     redirect("/403");
   }
 
-  const channels = await getAllChannels();
+  const [channels, tags] = await Promise.all([
+    getAllChannels(),
+    getAllTags(),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -20,7 +23,7 @@ export default async function ChannelsAdminPage() {
         <h1 className="text-2xl font-bold">チャンネル管理</h1>
       </div>
 
-      <ChannelAdmin initialChannels={channels} />
+      <ChannelAdmin initialChannels={channels} initialTags={tags} />
     </div>
   );
 }

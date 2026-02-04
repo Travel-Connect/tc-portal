@@ -1,15 +1,15 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { X, Send, Loader2 } from "lucide-react";
+import { X, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { createReply, markThreadAsRead, uploadAttachment } from "@/lib/actions/chat";
+import { createReply, markThreadAsRead, uploadAttachment, getMentionableUsers, getMessagesReactions } from "@/lib/actions/chat";
 import { TagInput } from "./TagInput";
-import { MessageItem } from "./MessageItem";
+import { MessageItem, groupMessages } from "./MessageItem";
 import { FileUpload } from "./FileUpload";
-import type { ChatMessageWithAuthor, ChatTag, ChatAttachment, Profile } from "@/types/database";
+import { RichTextEditor } from "./RichTextEditor";
+import type { ChatMessageWithAuthor, ChatTag, ChatAttachment, Profile, ReactionSummary } from "@/types/database";
 
 interface ThreadDetailProps {
   threadId: string;
@@ -26,8 +26,15 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [channelId, setChannelId] = useState<string | null>(null);
+  const [users, setUsers] = useState<Profile[]>([]);
   const isSubmittingRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const replyTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // メンション用ユーザー一覧を取得
+  useEffect(() => {
+    getMentionableUsers().then(setUsers);
+  }, []);
 
   // スレッドと返信を取得
   useEffect(() => {
@@ -65,7 +72,6 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
       };
       delete (threadWithAttachments as Record<string, unknown>).chat_attachments;
 
-      setThread(threadWithAttachments);
       setChannelId(threadData.channel_id);
 
       // タグを取得
@@ -90,19 +96,36 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
         .is("deleted_at", null)
         .order("created_at", { ascending: true });
 
+      let repliesWithAttachments: ChatMessageWithAuthor[] = [];
       if (repliesError) {
         console.error("Error fetching replies:", repliesError);
       } else {
         // chat_attachments を attachments にマッピング
-        const repliesWithAttachments = (repliesData || []).map((r) => ({
+        repliesWithAttachments = (repliesData || []).map((r) => ({
           ...r,
           attachments: r.chat_attachments as ChatAttachment[] | undefined,
         }));
         repliesWithAttachments.forEach((r) => {
-          delete (r as Record<string, unknown>).chat_attachments;
+          delete (r as unknown as Record<string, unknown>).chat_attachments;
         });
-        setReplies(repliesWithAttachments);
       }
+
+      // リアクションを一括取得
+      const allMessageIds = [threadId, ...repliesWithAttachments.map((r) => r.id)];
+      const reactionsMap = await getMessagesReactions(allMessageIds);
+
+      // リアクションをメッセージにマージ
+      const threadWithReactions = {
+        ...threadWithAttachments,
+        reactions: reactionsMap.get(threadId) || [],
+      };
+      setThread(threadWithReactions);
+
+      const repliesWithReactions = repliesWithAttachments.map((r) => ({
+        ...r,
+        reactions: reactionsMap.get(r.id) || [],
+      }));
+      setReplies(repliesWithReactions);
 
       // 既読をマーク
       await markThreadAsRead(threadId);
@@ -140,6 +163,7 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
           const newMessage: ChatMessageWithAuthor = {
             ...newReply,
             profiles: profile as Profile | null,
+            reactions: [],
           };
           setReplies((prev) => [...prev, newMessage]);
         }
@@ -163,13 +187,12 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
             .eq("id", updatedReply.created_by)
             .single();
 
-          const updatedMessage: ChatMessageWithAuthor = {
-            ...updatedReply,
-            profiles: profile as Profile | null,
-          };
-
           setReplies((prev) =>
-            prev.map((r) => (r.id === updatedMessage.id ? updatedMessage : r))
+            prev.map((r) =>
+              r.id === updatedReply.id
+                ? { ...updatedReply, profiles: profile as Profile | null, reactions: r.reactions }
+                : r
+            )
           );
         }
       )
@@ -192,10 +215,11 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
             .eq("id", updatedThread.created_by)
             .single();
 
-          setThread({
+          setThread((prev) => ({
             ...updatedThread,
             profiles: profile as Profile | null,
-          });
+            reactions: prev?.reactions || [],
+          }));
         }
       )
       .subscribe();
@@ -241,10 +265,14 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
     isSubmittingRef.current = false;
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit();
+  // リアクション変更ハンドラ
+  const handleReactionChange = (messageId: string, newReactions: ReactionSummary[]) => {
+    if (messageId === threadId) {
+      setThread((prev) => prev ? { ...prev, reactions: newReactions } : null);
+    } else {
+      setReplies((prev) =>
+        prev.map((r) => (r.id === messageId ? { ...r, reactions: newReactions } : r))
+      );
     }
   };
 
@@ -264,6 +292,9 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
     );
   }
 
+  // 返信をグループ化
+  const groupedReplies = groupMessages(replies);
+
   return (
     <div className="flex flex-col h-full">
       {/* ヘッダー */}
@@ -275,55 +306,60 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
       </div>
 
       {/* メッセージ一覧 */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4">
         {/* 親メッセージ */}
-        <div className="group">
-          <MessageItem
-            message={thread}
-            currentUserId={currentUserId || ""}
-            variant="thread"
-            onUpdate={(updatedMessage) => setThread(updatedMessage)}
-            onDelete={() => {
-              // 親が削除されても表示は維持（削除済み表示に切り替わる）
-              setThread((prev) => prev ? { ...prev, deleted_at: new Date().toISOString() } : null);
-            }}
-          />
-          {/* タグ（削除されていない場合のみ表示） */}
-          {!thread.deleted_at && (
-            <div className="mt-3 pt-3 border-t border-muted bg-muted/30 rounded-b-lg px-4 pb-4 -mt-4">
-              <TagInput
-                threadId={threadId}
-                initialTags={tags}
-                onTagsChange={setTags}
-              />
-            </div>
-          )}
-        </div>
+        <MessageItem
+          message={thread}
+          currentUserId={currentUserId || ""}
+          variant="thread"
+          groupPosition="single"
+          onUpdate={(updatedMessage) => setThread(updatedMessage)}
+          onDelete={() => {
+            // 親が削除されても表示は維持（削除済み表示に切り替わる）
+            setThread((prev) => prev ? { ...prev, deleted_at: new Date().toISOString() } : null);
+          }}
+          onReactionChange={handleReactionChange}
+        />
+
+        {/* タグ（削除されていない場合のみ表示） */}
+        {!thread.deleted_at && (
+          <div className="mt-3 ml-10">
+            <TagInput
+              threadId={threadId}
+              initialTags={tags}
+              onTagsChange={setTags}
+            />
+          </div>
+        )}
 
         {/* 返信 */}
-        {replies.length > 0 && (
-          <div className="border-l-2 border-muted pl-4 space-y-3">
-            {replies.map((reply) => (
-              <div key={reply.id} className="group">
-                <MessageItem
-                  message={reply}
-                  currentUserId={currentUserId || ""}
-                  variant="reply"
-                  onUpdate={(updatedMessage) => {
-                    setReplies((prev) =>
-                      prev.map((r) => (r.id === updatedMessage.id ? updatedMessage : r))
-                    );
-                  }}
-                  onDelete={(messageId) => {
-                    // 削除済みに更新（リストからは削除しない）
-                    setReplies((prev) =>
-                      prev.map((r) =>
-                        r.id === messageId ? { ...r, deleted_at: new Date().toISOString() } : r
-                      )
-                    );
-                  }}
-                />
-              </div>
+        {groupedReplies.length > 0 && (
+          <div className="mt-4 pt-4 border-t">
+            <div className="text-xs text-muted-foreground mb-2">
+              {replies.length}件の返信
+            </div>
+            {groupedReplies.map(({ message, position }) => (
+              <MessageItem
+                key={message.id}
+                message={message}
+                currentUserId={currentUserId || ""}
+                variant="reply"
+                groupPosition={position}
+                onUpdate={(updatedMessage) => {
+                  setReplies((prev) =>
+                    prev.map((r) => (r.id === updatedMessage.id ? updatedMessage : r))
+                  );
+                }}
+                onDelete={(messageId) => {
+                  // 削除済みに更新（リストからは削除しない）
+                  setReplies((prev) =>
+                    prev.map((r) =>
+                      r.id === messageId ? { ...r, deleted_at: new Date().toISOString() } : r
+                    )
+                  );
+                }}
+                onReactionChange={handleReactionChange}
+              />
             ))}
           </div>
         )}
@@ -334,33 +370,25 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
       {/* 返信入力 */}
       <div className="p-4 border-t bg-muted/20">
         <div className="space-y-2">
-          <div className="relative">
-            <Textarea
-              placeholder="返信を入力..."
-              value={replyBody}
-              onChange={(e) => setReplyBody(e.target.value)}
-              onKeyDown={handleKeyDown}
-              className="min-h-[60px] pr-10 resize-none text-sm"
-              disabled={isSubmitting}
-            />
-            <Button
-              size="icon"
-              variant="ghost"
-              className="absolute right-1 bottom-1 h-8 w-8"
-              onClick={handleSubmit}
-              disabled={!replyBody.trim() || isSubmitting}
-            >
-              {isSubmitting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
+          <RichTextEditor
+            value={replyBody}
+            onChange={setReplyBody}
+            onSubmit={handleSubmit}
+            placeholder="返信を入力..."
+            disabled={isSubmitting}
+            isSubmitting={isSubmitting}
+            users={users}
+            minHeight={60}
+            maxHeight={200}
+            resizable={true}
+            showToolbar={true}
+            textareaRef={replyTextareaRef}
+          />
           <FileUpload
             files={selectedFiles}
             onFilesChange={setSelectedFiles}
             disabled={isSubmitting}
+            textareaRef={replyTextareaRef}
           />
         </div>
       </div>

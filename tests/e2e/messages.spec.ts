@@ -260,19 +260,93 @@ test.describe("Messages Page", () => {
     await page.reload();
     await page.waitForTimeout(1500);
 
-    // タグフィルタのBadgeが表示されているか確認
-    const tagFilterBadge = page.locator("[data-slot='badge']").filter({ hasText: filterTag });
+    // タグフィルタボタン（Popover）をクリック
+    const tagFilterButton = page.getByTestId("tag-filter-trigger");
+    const isTagFilterVisible = await tagFilterButton.isVisible().catch(() => false);
 
-    // タグが存在する場合のみフィルタテスト実行
-    const isTagVisible = await tagFilterBadge.isVisible().catch(() => false);
-    if (isTagVisible) {
-      // タグをクリックしてフィルタ
-      await tagFilterBadge.click();
-      await page.waitForTimeout(500);
+    if (isTagFilterVisible) {
+      await tagFilterButton.click();
+      await page.waitForTimeout(300);
 
-      // フィルタ後もスレッドが表示される
-      await expect(page.getByText(testMessage)).toBeVisible({ timeout: 10000 });
+      // タグ検索欄にタグ名を入力
+      const tagSearchInput = page.getByPlaceholder("タグを検索...");
+      await expect(tagSearchInput).toBeVisible({ timeout: 5000 });
+      await tagSearchInput.fill(filterTag);
+      await page.waitForTimeout(300);
+
+      // チェックボックスをクリックしてフィルタ適用
+      const tagCheckbox = page.getByRole("checkbox", { name: filterTag });
+      const isCheckboxVisible = await tagCheckbox.isVisible().catch(() => false);
+
+      if (isCheckboxVisible) {
+        await tagCheckbox.click();
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(500);
+
+        // フィルタ後もスレッドが表示される
+        await expect(page.getByText(testMessage)).toBeVisible({ timeout: 10000 });
+      }
     }
+  });
+
+  test("スレッドを開くと既読になる", async ({ page }) => {
+    await page.goto("/messages");
+
+    // スレッドを作成
+    const textarea = page.getByPlaceholder("新しいスレッドを作成...");
+    const testMessage = `既読テスト ${Date.now()}`;
+    await textarea.fill(testMessage);
+    await textarea.press("Enter");
+
+    // スレッドが作成されるのを待つ
+    await page.waitForTimeout(2000);
+
+    // ページをリロードして未読状態を確認
+    await page.reload();
+    await page.waitForTimeout(1500);
+
+    // スレッドアイテムをクリック
+    const threadItem = page.getByRole("button", { name: new RegExp(testMessage) });
+    await expect(threadItem).toBeVisible({ timeout: 10000 });
+    await threadItem.click();
+
+    // 詳細パネルが開く
+    await expect(page.getByPlaceholder("返信を入力...")).toBeVisible({ timeout: 10000 });
+
+    // リロード後、未読バッジが消えていることを確認
+    await page.reload();
+    await page.waitForTimeout(1500);
+
+    // スレッドリストで該当スレッドの未読バッジが存在しないことを確認
+    const threadItemAfterRead = page.getByRole("button", { name: new RegExp(testMessage) });
+    await expect(threadItemAfterRead).toBeVisible({ timeout: 10000 });
+
+    // 未読バッジがない（data-testid="unread-badge"が存在しない）
+    const unreadBadge = threadItemAfterRead.locator("[data-testid='unread-badge']");
+    await expect(unreadBadge).not.toBeVisible();
+  });
+
+  test("タグフィルタはPopoverで表示される", async ({ page }) => {
+    await page.goto("/messages");
+
+    // タグフィルタボタンが表示される
+    const tagFilterButton = page.getByTestId("tag-filter-trigger");
+    await expect(tagFilterButton).toBeVisible({ timeout: 10000 });
+
+    // クリックするとPopoverが開く
+    await tagFilterButton.click();
+    await page.waitForTimeout(300);
+
+    // タグ検索欄が表示される
+    const tagSearchInput = page.getByPlaceholder("タグを検索...");
+    await expect(tagSearchInput).toBeVisible({ timeout: 5000 });
+
+    // Escで閉じる
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+
+    // Popoverが閉じたことを確認
+    await expect(tagSearchInput).not.toBeVisible();
   });
 
   test("返信を編集すると「編集済み」が表示される", async ({ page }) => {

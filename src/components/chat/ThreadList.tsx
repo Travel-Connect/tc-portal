@@ -1,14 +1,21 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { MessageSquare, Send, Loader2, X, Search } from "lucide-react";
+import { MessageSquare, Loader2, X, Search, Tag, Filter, CheckCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { createThread } from "@/lib/actions/chat";
-import type { ChatThreadWithDetails, ChatTag } from "@/types/database";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import { createThread, uploadAttachment, markAllThreadsAsRead } from "@/lib/actions/chat";
+import { FileUpload } from "./FileUpload";
+import { RichTextEditor } from "./RichTextEditor";
+import type { ChatThreadWithDetails, ChatTag, Profile } from "@/types/database";
 
 interface ThreadListProps {
   channelId: string | null;
@@ -23,6 +30,8 @@ interface ThreadListProps {
   onTagFilterChange: (tagIds: string[]) => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
+  /** メンション候補となるユーザー一覧 */
+  users?: Profile[];
 }
 
 export function ThreadList({
@@ -38,22 +47,41 @@ export function ThreadList({
   onTagFilterChange,
   searchQuery,
   onSearchChange,
+  users = [],
 }: ThreadListProps) {
   const [newThreadBody, setNewThreadBody] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [tagSearchQuery, setTagSearchQuery] = useState("");
+  const [isTagPopoverOpen, setIsTagPopoverOpen] = useState(false);
+  const [isMarkingAllAsRead, setIsMarkingAllAsRead] = useState(false);
   const isSubmittingRef = useRef(false);
+  const newThreadTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSubmit = async () => {
-    // useRefで同期的に二重送信を防止
-    if (!channelId || !newThreadBody.trim() || isSubmittingRef.current) return;
+    // テキストまたは画像のどちらかが必要
+    const hasContent = newThreadBody.trim() || selectedFiles.length > 0;
+    if (!channelId || !hasContent || isSubmittingRef.current) return;
 
     isSubmittingRef.current = true;
     setIsSubmitting(true);
     const result = await createThread(channelId, newThreadBody.trim());
 
     if (result.success && result.thread) {
+      // 添付ファイルをアップロード
+      if (selectedFiles.length > 0) {
+        for (const file of selectedFiles) {
+          await uploadAttachment(
+            result.thread.id,
+            channelId,
+            result.thread.id, // 親スレッドなのでthread_idは自身のID
+            file
+          );
+        }
+      }
       onNewThread(result.thread);
       setNewThreadBody("");
+      setSelectedFiles([]);
     } else {
       console.error("Failed to create thread:", result.error);
     }
@@ -62,14 +90,25 @@ export function ThreadList({
     isSubmittingRef.current = false;
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit();
+  const handleMarkAllAsRead = async () => {
+    if (!channelId || isMarkingAllAsRead) return;
+
+    setIsMarkingAllAsRead(true);
+    const result = await markAllThreadsAsRead(channelId);
+
+    if (result.success) {
+      // ページをリロードして未読バッジを更新
+      window.location.reload();
+    } else {
+      console.error("Failed to mark all threads as read:", result.error);
     }
+
+    setIsMarkingAllAsRead(false);
   };
 
-  const formatDate = (dateString: string) => {
+
+  const formatDate = (dateString: string | null | undefined) => {
+    if (!dateString) return "";
     const date = new Date(dateString);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
@@ -90,13 +129,44 @@ export function ThreadList({
     return thread.profiles?.display_name || thread.profiles?.email?.split("@")[0] || "不明";
   };
 
+  // タグフィルタ用のタグ一覧（検索でフィルタ）
+  const filteredTags = allTags.filter((tag) =>
+    tag.name.toLowerCase().includes(tagSearchQuery.toLowerCase())
+  );
+
+  // 選択中のタグ（表示用）
+  const selectedTags = allTags.filter((tag) => selectedTagIds.includes(tag.id));
+  const MAX_VISIBLE_TAGS = 3;
+  const visibleSelectedTags = selectedTags.slice(0, MAX_VISIBLE_TAGS);
+  const hiddenTagCount = selectedTags.length - MAX_VISIBLE_TAGS;
+
+  // 未読スレッド数をカウント
+  const unreadCount = threads.filter((t) => t.is_unread).length;
+
   return (
     <div className="flex flex-col h-full">
       {/* ヘッダー */}
-      <div className="p-4 border-b">
+      <div className="p-4 border-b flex items-center justify-between">
         <h2 className="font-semibold">
           {channelName ? `# ${channelName}` : "チャンネルを選択"}
         </h2>
+        {channelId && unreadCount > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleMarkAllAsRead}
+            disabled={isMarkingAllAsRead}
+            className="h-7 text-xs gap-1"
+            title="このチャンネルの全スレッドを既読にする"
+          >
+            {isMarkingAllAsRead ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <CheckCheck className="h-3.5 w-3.5" />
+            )}
+            <span>チャンネルを既読</span>
+          </Button>
+        )}
       </div>
 
       {/* 検索バー */}
@@ -122,66 +192,131 @@ export function ThreadList({
         </div>
       )}
 
-      {/* タグフィルタ */}
+      {/* タグフィルタ（Popover形式） */}
       {allTags.length > 0 && (
-        <div className="px-3 py-2 border-b bg-muted/10 flex flex-wrap gap-1">
-          {allTags.map((tag) => {
-            const isSelected = selectedTagIds.includes(tag.id);
-            return (
-              <Badge
-                key={tag.id}
-                variant={isSelected ? "default" : "outline"}
-                className={cn(
-                  "cursor-pointer text-xs",
-                  isSelected && "pr-1"
-                )}
-                onClick={() => {
-                  if (isSelected) {
-                    onTagFilterChange(selectedTagIds.filter((id) => id !== tag.id));
-                  } else {
-                    onTagFilterChange([...selectedTagIds, tag.id]);
-                  }
-                }}
+        <div className="px-3 py-2 border-b bg-muted/10 flex items-center gap-2 flex-wrap">
+          <Popover open={isTagPopoverOpen} onOpenChange={setIsTagPopoverOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1"
+                data-testid="tag-filter-trigger"
               >
-                {tag.name}
-                {isSelected && (
-                  <X className="h-3 w-3 ml-1" />
+                <Filter className="h-3 w-3" />
+                タグで絞り込み
+                {selectedTagIds.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+                    {selectedTagIds.length}
+                  </Badge>
                 )}
-              </Badge>
-            );
-          })}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-2" align="start">
+              <div className="space-y-2">
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="タグを検索..."
+                    value={tagSearchQuery}
+                    onChange={(e) => setTagSearchQuery(e.target.value)}
+                    className="h-7 pl-7 text-xs"
+                  />
+                </div>
+                <div className="max-h-48 overflow-y-auto space-y-1">
+                  {filteredTags.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-2 text-center">
+                      タグが見つかりません
+                    </p>
+                  ) : (
+                    filteredTags.map((tag) => {
+                      const isSelected = selectedTagIds.includes(tag.id);
+                      return (
+                        <label
+                          key={tag.id}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted cursor-pointer"
+                        >
+                          <Checkbox
+                            id={`tag-filter-${tag.id}`}
+                            aria-label={tag.name}
+                            checked={isSelected}
+                            onCheckedChange={(checked: boolean | "indeterminate") => {
+                              if (checked === true) {
+                                onTagFilterChange([...selectedTagIds, tag.id]);
+                              } else {
+                                onTagFilterChange(selectedTagIds.filter((id) => id !== tag.id));
+                              }
+                            }}
+                          />
+                          <span className="text-sm flex-1 truncate">{tag.name}</span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+                {selectedTagIds.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full h-7 text-xs"
+                    onClick={() => {
+                      onTagFilterChange([]);
+                      setIsTagPopoverOpen(false);
+                    }}
+                  >
+                    すべてクリア
+                  </Button>
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {/* 選択中のタグをチップ表示 */}
+          {visibleSelectedTags.map((tag) => (
+            <Badge
+              key={tag.id}
+              variant="default"
+              className="text-xs pr-1 cursor-pointer"
+              onClick={() => onTagFilterChange(selectedTagIds.filter((id) => id !== tag.id))}
+            >
+              <Tag className="h-2.5 w-2.5 mr-1" />
+              {tag.name}
+              <X className="h-3 w-3 ml-1" />
+            </Badge>
+          ))}
+          {hiddenTagCount > 0 && (
+            <Badge variant="secondary" className="text-xs">
+              +{hiddenTagCount}
+            </Badge>
+          )}
         </div>
       )}
 
       {/* 新規スレッド作成 */}
       {channelId && (
         <div className="p-3 border-b bg-muted/20">
-          <div className="relative">
-            <Textarea
-              placeholder="新しいスレッドを作成..."
+          <div className="space-y-2">
+            <RichTextEditor
               value={newThreadBody}
-              onChange={(e) => setNewThreadBody(e.target.value)}
-              onKeyDown={handleKeyDown}
-              className="min-h-[60px] pr-10 resize-none text-sm"
+              onChange={setNewThreadBody}
+              onSubmit={handleSubmit}
+              placeholder="新しいスレッドを作成..."
               disabled={isSubmitting}
+              isSubmitting={isSubmitting}
+              users={users}
+              minHeight={60}
+              maxHeight={200}
+              resizable={true}
+              showToolbar={true}
+              textareaRef={newThreadTextareaRef}
             />
-            <Button
-              size="icon"
-              variant="ghost"
-              className="absolute right-1 bottom-1 h-8 w-8"
-              onClick={handleSubmit}
-              disabled={!newThreadBody.trim() || isSubmitting}
-            >
-              {isSubmitting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-            </Button>
+            <FileUpload
+              files={selectedFiles}
+              onFilesChange={setSelectedFiles}
+              disabled={isSubmitting}
+              textareaRef={newThreadTextareaRef}
+            />
           </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Enter で送信 / Shift+Enter で改行
-          </p>
         </div>
       )}
 
@@ -198,41 +333,64 @@ export function ThreadList({
           </div>
         ) : (
           <ul>
-            {threads.map((thread) => (
-              <li key={thread.id}>
-                <button
-                  onClick={() => onSelectThread(thread.id)}
-                  className={cn(
-                    "w-full text-left p-3 border-b transition-colors",
-                    selectedThreadId === thread.id
-                      ? "bg-accent"
-                      : "hover:bg-muted/50"
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <p className={cn(
-                      "text-sm font-medium line-clamp-2 flex-1",
-                      thread.deleted_at && "text-muted-foreground italic"
-                    )}>
-                      {thread.deleted_at ? "[削除済み]" : thread.body}
-                    </p>
-                    <span className="text-xs text-muted-foreground whitespace-nowrap">
-                      {formatDate(thread.created_at)}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-xs text-muted-foreground">
-                      {getDisplayName(thread)}
-                    </span>
-                    {(thread.reply_count || 0) > 0 && (
-                      <span className="text-xs text-muted-foreground">
-                        · {thread.reply_count} 件の返信
-                      </span>
+            {threads.map((thread) => {
+              const isUnread = thread.is_unread;
+              const unreadCount = thread.unread_count || 0;
+              const displayDate = thread.last_activity_at || thread.created_at;
+
+              return (
+                <li key={thread.id}>
+                  <button
+                    onClick={() => onSelectThread(thread.id)}
+                    className={cn(
+                      "w-full text-left p-3 border-b transition-colors",
+                      selectedThreadId === thread.id
+                        ? "bg-accent"
+                        : isUnread
+                        ? "bg-blue-50 dark:bg-blue-950/30 hover:bg-blue-100 dark:hover:bg-blue-950/50"
+                        : "hover:bg-muted/50"
                     )}
-                  </div>
-                </button>
-              </li>
-            ))}
+                    data-testid={`thread-item-${thread.id}`}
+                    data-unread={isUnread}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className={cn(
+                        "text-sm line-clamp-2 flex-1",
+                        thread.deleted_at && "text-muted-foreground italic",
+                        isUnread && !thread.deleted_at && "font-semibold"
+                      )}>
+                        {thread.deleted_at ? "[削除済み]" : thread.body}
+                      </p>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">
+                          {formatDate(displayDate)}
+                        </span>
+                        {/* 未読バッジ */}
+                        {isUnread && unreadCount > 0 && (
+                          <Badge
+                            variant="destructive"
+                            className="h-5 min-w-[20px] px-1.5 text-[10px] font-bold"
+                            data-testid="unread-badge"
+                          >
+                            {unreadCount > 9 ? "9+" : unreadCount}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs text-muted-foreground">
+                        {getDisplayName(thread)}
+                      </span>
+                      {(thread.reply_count || 0) > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          · {thread.reply_count} 件の返信
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
