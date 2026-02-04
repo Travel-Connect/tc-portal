@@ -1,26 +1,39 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Plus, Pencil, Save, X, Archive, ArchiveRestore } from "lucide-react";
+import { Plus, Pencil, Save, X, Archive, ArchiveRestore, Trash2, Tag } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import type { ChatChannel } from "@/types/database";
-import { createChannel, updateChannel } from "@/lib/actions/chat";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import type { ChatChannel, ChatTag } from "@/types/database";
+import { createChannel, updateChannel, deleteTag } from "@/lib/actions/chat";
 
 interface ChannelAdminProps {
   initialChannels: ChatChannel[];
+  initialTags: ChatTag[];
 }
 
-export function ChannelAdmin({ initialChannels }: ChannelAdminProps) {
+export function ChannelAdmin({ initialChannels, initialTags }: ChannelAdminProps) {
   const [channels, setChannels] = useState(initialChannels);
+  const [tags, setTags] = useState(initialTags);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  // タグ削除確認ダイアログ
+  const [tagToDelete, setTagToDelete] = useState<ChatTag | null>(null);
 
   // Form state
   const [formSlug, setFormSlug] = useState("");
@@ -108,6 +121,26 @@ export function ChannelAdmin({ initialChannels }: ChannelAdminProps) {
         setError(null);
       } else {
         setError(result.error || "エラーが発生しました");
+      }
+    });
+  };
+
+  const handleDeleteTag = (tag: ChatTag) => {
+    setTagToDelete(tag);
+  };
+
+  const handleConfirmDeleteTag = () => {
+    if (!tagToDelete) return;
+
+    startTransition(async () => {
+      const result = await deleteTag(tagToDelete.id);
+
+      if (result.success) {
+        setTags(tags.filter((t) => t.id !== tagToDelete.id));
+        setTagToDelete(null);
+        setError(null);
+      } else {
+        setError(result.error || "タグの削除に失敗しました");
       }
     });
   };
@@ -293,6 +326,80 @@ export function ChannelAdmin({ initialChannels }: ChannelAdminProps) {
           </div>
         </CardContent>
       </Card>
+
+      {/* タグ管理セクション */}
+      <Card className="mt-8">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Tag className="w-5 h-5" />
+            タグ管理
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {tags.length === 0 ? (
+            <p className="text-center text-muted-foreground py-4">
+              タグがありません
+            </p>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground mb-4">
+                タグを削除すると、関連するスレッドのタグ付けも解除されます。
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {tags.map((tag) => (
+                  <Badge
+                    key={tag.id}
+                    variant="secondary"
+                    className="pl-3 pr-1 py-1.5 text-sm flex items-center gap-2"
+                  >
+                    {tag.name}
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-5 w-5 hover:bg-destructive/20 hover:text-destructive"
+                      onClick={() => handleDeleteTag(tag)}
+                      disabled={isPending}
+                      title="削除"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* タグ削除確認ダイアログ */}
+      <Dialog open={!!tagToDelete} onOpenChange={(open) => !open && setTagToDelete(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>タグを削除</DialogTitle>
+            <DialogDescription>
+              タグ「{tagToDelete?.name}」を削除しますか？
+              このタグが付いているすべてのスレッドからタグが解除されます。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setTagToDelete(null)}
+              disabled={isPending}
+            >
+              キャンセル
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmDeleteTag}
+              disabled={isPending}
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              削除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ChannelList } from "./ChannelList";
 import { ThreadList } from "./ThreadList";
 import { ThreadDetail } from "./ThreadDetail";
-import type { ChatChannel, ChatThreadWithDetails, ChatTag, Profile } from "@/types/database";
+import { markThreadAsRead, getMentionableUsers } from "@/lib/actions/chat";
+import type { ChatChannel, ChatThreadWithDetails, ChatTag, Profile, ThreadWithUnreadRow } from "@/types/database";
 
 interface MessagesLayoutProps {
   initialChannels: ChatChannel[];
@@ -22,8 +23,27 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
   const [allTags, setAllTags] = useState<ChatTag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [users, setUsers] = useState<Profile[]>([]);
 
   const selectedChannel = channels.find((c) => c.id === selectedChannelId);
+
+  // メンション用ユーザー一覧を取得
+  useEffect(() => {
+    getMentionableUsers().then(setUsers);
+  }, []);
+
+  // 現在のユーザーIDを取得
+  useEffect(() => {
+    const fetchUser = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setCurrentUserId(user.id);
+      }
+    };
+    fetchUser();
+  }, []);
 
   // 全タグを取得
   useEffect(() => {
@@ -44,97 +64,169 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
     fetchTags();
   }, []);
 
-  // チャンネル選択時またはタグフィルタ変更時にスレッドを取得（検索はデバウンス）
-  useEffect(() => {
+  // フォールバック: RPC未対応時の従来方式
+  const fetchThreadsFallback = useCallback(async () => {
     if (!selectedChannelId) return;
 
-    const fetchThreads = async () => {
-      setIsLoadingThreads(true);
-      setSelectedThreadId(null);
+    const supabase = createClient();
 
-      const supabase = createClient();
+    let threadIdsFromTags: string[] | null = null;
+    if (selectedTagIds.length > 0) {
+      const { data: taggedThreads } = await supabase
+        .from("chat_thread_tags")
+        .select("thread_id")
+        .in("tag_id", selectedTagIds);
 
-      // タグで絞り込む場合、対象スレッドIDを先に取得
-      let threadIdsFromTags: string[] | null = null;
-      if (selectedTagIds.length > 0) {
-        const { data: taggedThreads } = await supabase
-          .from("chat_thread_tags")
-          .select("thread_id")
-          .in("tag_id", selectedTagIds);
-
-        if (taggedThreads && taggedThreads.length > 0) {
-          threadIdsFromTags = [...new Set(taggedThreads.map((t) => t.thread_id))];
-        } else {
-          // タグ指定があるが該当なし → 空配列を返す
-          setThreads([]);
-          setIsLoadingThreads(false);
-          return;
-        }
-      }
-
-      let dbQuery = supabase
-        .from("chat_messages")
-        .select(`
-          *,
-          profiles (id, email, display_name, role)
-        `)
-        .eq("channel_id", selectedChannelId)
-        .is("parent_id", null)
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false })
-        .limit(50);
-
-      // タグで絞り込み
-      if (threadIdsFromTags) {
-        dbQuery = dbQuery.in("id", threadIdsFromTags);
-      }
-
-      // 本文検索（ILIKE）
-      if (searchQuery.trim()) {
-        dbQuery = dbQuery.ilike("body", `%${searchQuery.trim()}%`);
-      }
-
-      const { data, error } = await dbQuery;
-
-      if (error) {
-        console.error("Error fetching threads:", error);
-        setThreads([]);
+      if (taggedThreads && taggedThreads.length > 0) {
+        threadIdsFromTags = [...new Set(taggedThreads.map((t) => t.thread_id))];
       } else {
-        // 返信数を取得
-        const threadIds = data?.map((t) => t.id) || [];
-        if (threadIds.length > 0) {
-          const { data: replies } = await supabase
-            .from("chat_messages")
-            .select("parent_id")
-            .in("parent_id", threadIds)
-            .is("deleted_at", null);
-
-          const replyCountMap = new Map<string, number>();
-          replies?.forEach((r) => {
-            if (r.parent_id) {
-              replyCountMap.set(r.parent_id, (replyCountMap.get(r.parent_id) || 0) + 1);
-            }
-          });
-
-          setThreads(
-            (data || []).map((t) => ({
-              ...t,
-              reply_count: replyCountMap.get(t.id) || 0,
-            }))
-          );
-        } else {
-          setThreads([]);
-        }
+        setThreads([]);
+        setIsLoadingThreads(false);
+        return;
       }
+    }
 
-      setIsLoadingThreads(false);
-    };
+    let dbQuery = supabase
+      .from("chat_messages")
+      .select(`
+        *,
+        profiles (id, email, display_name, role)
+      `)
+      .eq("channel_id", selectedChannelId)
+      .is("parent_id", null)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(50);
 
-    // 検索クエリの場合はデバウンス
-    const debounceTime = searchQuery.trim() ? 300 : 0;
-    const timer = setTimeout(fetchThreads, debounceTime);
-    return () => clearTimeout(timer);
+    if (threadIdsFromTags) {
+      dbQuery = dbQuery.in("id", threadIdsFromTags);
+    }
+
+    if (searchQuery.trim()) {
+      dbQuery = dbQuery.ilike("body", `%${searchQuery.trim()}%`);
+    }
+
+    const { data, error } = await dbQuery;
+
+    if (error) {
+      console.error("Error fetching threads:", error);
+      setThreads([]);
+    } else {
+      const threadIds = data?.map((t) => t.id) || [];
+      if (threadIds.length > 0) {
+        const { data: replies } = await supabase
+          .from("chat_messages")
+          .select("parent_id")
+          .in("parent_id", threadIds)
+          .is("deleted_at", null);
+
+        const replyCountMap = new Map<string, number>();
+        replies?.forEach((r) => {
+          if (r.parent_id) {
+            replyCountMap.set(r.parent_id, (replyCountMap.get(r.parent_id) || 0) + 1);
+          }
+        });
+
+        setThreads(
+          (data || []).map((t) => ({
+            ...t,
+            reply_count: replyCountMap.get(t.id) || 0,
+            is_unread: true, // フォールバック時はすべて未読扱い
+          }))
+        );
+      } else {
+        setThreads([]);
+      }
+    }
+
+    setIsLoadingThreads(false);
   }, [selectedChannelId, selectedTagIds, searchQuery]);
+
+  // RPC関数を使用してスレッドを取得（タグフィルタ・検索対応）
+  const fetchThreadsWithUnread = useCallback(async () => {
+    if (!selectedChannelId || !currentUserId) return;
+
+    setIsLoadingThreads(true);
+    setSelectedThreadId(null);
+
+    const supabase = createClient();
+
+    // RPC関数でスレッドを取得
+    const { data: rpcData, error: rpcError } = await supabase.rpc(
+      "get_threads_with_unread",
+      {
+        p_channel_id: selectedChannelId,
+        p_user_id: currentUserId,
+        p_limit: 50,
+      }
+    );
+
+    if (rpcError) {
+      console.error("Error fetching threads with RPC:", rpcError);
+      // フォールバック: 従来の方法で取得
+      await fetchThreadsFallback();
+      return;
+    }
+
+    let threadsData: ChatThreadWithDetails[] = (rpcData as ThreadWithUnreadRow[] || []).map((row) => ({
+      id: row.id,
+      channel_id: row.channel_id,
+      parent_id: row.parent_id,
+      body: row.body,
+      created_by: row.created_by,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      deleted_at: row.deleted_at,
+      profiles: row.author_id
+        ? {
+            id: row.author_id,
+            email: row.author_email || "",
+            display_name: row.author_display_name,
+            role: (row.author_role as "admin" | "member") || "member",
+            created_at: "",
+          }
+        : null,
+      reply_count: row.reply_count,
+      last_activity_at: row.last_activity_at,
+      unread_count: row.unread_count,
+      is_unread: row.is_unread,
+    }));
+
+    // タグフィルタ
+    if (selectedTagIds.length > 0) {
+      const { data: taggedThreads } = await supabase
+        .from("chat_thread_tags")
+        .select("thread_id")
+        .in("tag_id", selectedTagIds);
+
+      if (taggedThreads && taggedThreads.length > 0) {
+        const threadIdsFromTags = new Set(taggedThreads.map((t) => t.thread_id));
+        threadsData = threadsData.filter((t) => threadIdsFromTags.has(t.id));
+      } else {
+        threadsData = [];
+      }
+    }
+
+    // 本文検索（クライアント側フィルタ）
+    if (searchQuery.trim()) {
+      const query = searchQuery.trim().toLowerCase();
+      threadsData = threadsData.filter((t) =>
+        t.body.toLowerCase().includes(query)
+      );
+    }
+
+    setThreads(threadsData);
+    setIsLoadingThreads(false);
+  }, [selectedChannelId, currentUserId, selectedTagIds, searchQuery, fetchThreadsFallback]);
+
+  // チャンネル選択時またはタグフィルタ/検索変更時にスレッドを取得
+  useEffect(() => {
+    if (!selectedChannelId || !currentUserId) return;
+
+    const debounceTime = searchQuery.trim() ? 300 : 0;
+    const timer = setTimeout(fetchThreadsWithUnread, debounceTime);
+    return () => clearTimeout(timer);
+  }, [selectedChannelId, currentUserId, selectedTagIds, searchQuery, fetchThreadsWithUnread]);
 
   // Realtime購読
   useEffect(() => {
@@ -168,8 +260,11 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
               ...newMessage,
               profiles: profile as Profile | null,
               reply_count: 0,
+              last_activity_at: newMessage.created_at,
+              unread_count: 1,
+              is_unread: newMessage.created_by !== currentUserId,
             };
-            // 重複チェック（handleNewThreadと両方で追加されるのを防ぐ）
+            // 重複チェック
             setThreads((prev) => {
               if (prev.some((t) => t.id === newThread.id)) {
                 return prev;
@@ -177,14 +272,30 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
               return [newThread, ...prev];
             });
           } else {
-            // 返信の場合、スレッドの返信数を更新
+            // 返信の場合、スレッドの状態を更新
             setThreads((prev) =>
-              prev.map((t) =>
-                t.id === newMessage.parent_id
-                  ? { ...t, reply_count: (t.reply_count || 0) + 1 }
-                  : t
-              )
+              prev.map((t) => {
+                if (t.id === newMessage.parent_id) {
+                  const isViewingThread = selectedThreadId === t.id;
+                  const isOwnMessage = newMessage.created_by === currentUserId;
+                  return {
+                    ...t,
+                    reply_count: (t.reply_count || 0) + 1,
+                    last_activity_at: newMessage.created_at,
+                    // 閲覧中または自分の投稿なら未読にしない
+                    is_unread: isViewingThread || isOwnMessage ? t.is_unread : true,
+                    unread_count: isViewingThread || isOwnMessage
+                      ? t.unread_count
+                      : (t.unread_count || 0) + 1,
+                  };
+                }
+                return t;
+              })
             );
+            // 閲覧中のスレッドなら自動既読
+            if (selectedThreadId === newMessage.parent_id) {
+              markThreadAsRead(newMessage.parent_id);
+            }
           }
         }
       )
@@ -202,7 +313,6 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
 
           // 親メッセージ（スレッド）の更新
           if (updatedMessage.parent_id === null) {
-            // プロフィール情報を取得
             const { data: profile } = await supabase
               .from("profiles")
               .select("*")
@@ -216,6 +326,9 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
                       ...updatedMessage,
                       profiles: profile as Profile | null,
                       reply_count: t.reply_count,
+                      last_activity_at: t.last_activity_at,
+                      unread_count: t.unread_count,
+                      is_unread: t.is_unread,
                     }
                   : t
               )
@@ -228,16 +341,34 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [selectedChannelId]);
+  }, [selectedChannelId, selectedThreadId, currentUserId]);
 
   const handleNewThread = (thread: ChatThreadWithDetails) => {
-    // 重複チェック（Realtime購読と両方で追加されるのを防ぐ）
+    // 重複チェック
     setThreads((prev) => {
       if (prev.some((t) => t.id === thread.id)) {
         return prev;
       }
-      return [thread, ...prev];
+      return [{
+        ...thread,
+        last_activity_at: thread.created_at,
+        unread_count: 0,
+        is_unread: false, // 自分で作成したので既読
+      }, ...prev];
     });
+  };
+
+  // スレッド選択時に既読マーク & ローカル状態更新
+  const handleSelectThread = async (threadId: string) => {
+    setSelectedThreadId(threadId);
+    // ローカル状態を即座に更新
+    setThreads((prev) =>
+      prev.map((t) =>
+        t.id === threadId
+          ? { ...t, is_unread: false, unread_count: 0 }
+          : t
+      )
+    );
   };
 
   return (
@@ -258,7 +389,7 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
           channelName={selectedChannel?.name}
           threads={threads}
           selectedThreadId={selectedThreadId}
-          onSelectThread={setSelectedThreadId}
+          onSelectThread={handleSelectThread}
           onNewThread={handleNewThread}
           isLoading={isLoadingThreads}
           allTags={allTags}
@@ -266,6 +397,7 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
           onTagFilterChange={setSelectedTagIds}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
+          users={users}
         />
       </div>
 

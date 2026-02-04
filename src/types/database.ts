@@ -402,6 +402,26 @@ export interface ChatAttachment {
   created_at: string;
 }
 
+export interface ChatMessageReaction {
+  id: string;
+  message_id: string;
+  user_id: string;
+  emoji: string;
+  created_at: string;
+}
+
+// リアクションの集計結果
+export interface ReactionSummary {
+  emoji: string;
+  count: number;
+  users: { id: string; display_name: string | null }[];
+  hasReacted: boolean; // 現在のユーザーがリアクション済みか
+}
+
+// 固定リアクションセット
+export const REACTION_EMOJIS = ["👍", "❤️", "😂", "👀", "✅"] as const;
+export type ReactionEmoji = (typeof REACTION_EMOJIS)[number];
+
 // =====================================================
 // Chat Extended Types (with relations)
 // =====================================================
@@ -410,6 +430,7 @@ export interface ChatMessageWithAuthor extends ChatMessage {
   profiles?: Profile | null;
   attachments?: ChatAttachment[];
   mentions?: ChatMessageMention[];
+  reactions?: ReactionSummary[];
 }
 
 export interface ChatThreadWithDetails extends ChatMessage {
@@ -418,6 +439,30 @@ export interface ChatThreadWithDetails extends ChatMessage {
   last_reply_at?: string | null;
   tags?: ChatTag[];
   is_read?: boolean;
+  // 未読機能拡張
+  last_activity_at?: string | null;
+  unread_count?: number;
+  is_unread?: boolean;
+}
+
+// RPC get_threads_with_unread の戻り値型
+export interface ThreadWithUnreadRow {
+  id: string;
+  channel_id: string;
+  parent_id: string | null;
+  body: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string | null;
+  deleted_at: string | null;
+  author_id: string | null;
+  author_email: string | null;
+  author_display_name: string | null;
+  author_role: string | null;
+  reply_count: number;
+  last_activity_at: string;
+  unread_count: number;
+  is_unread: boolean;
 }
 
 export interface ChatChannelWithUnread extends ChatChannel {
