@@ -56,7 +56,7 @@ export function ThreadList({
   const [isTagPopoverOpen, setIsTagPopoverOpen] = useState(false);
   const [isMarkingAllAsRead, setIsMarkingAllAsRead] = useState(false);
   const isSubmittingRef = useRef(false);
-  const newThreadTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSubmit = async () => {
     // テキストまたは画像のどちらかが必要
@@ -278,6 +278,8 @@ export function ThreadList({
               variant="default"
               className="text-xs pr-1 cursor-pointer"
               onClick={() => onTagFilterChange(selectedTagIds.filter((id) => id !== tag.id))}
+              data-testid="tag-chip"
+              data-tag-id={tag.id}
             >
               <Tag className="h-2.5 w-2.5 mr-1" />
               {tag.name}
@@ -285,7 +287,7 @@ export function ThreadList({
             </Badge>
           ))}
           {hiddenTagCount > 0 && (
-            <Badge variant="secondary" className="text-xs">
+            <Badge variant="secondary" className="text-xs" data-testid="tag-overflow">
               +{hiddenTagCount}
             </Badge>
           )}
@@ -295,7 +297,7 @@ export function ThreadList({
       {/* 新規スレッド作成 */}
       {channelId && (
         <div className="p-3 border-b bg-muted/20">
-          <div className="space-y-2">
+          <div className="space-y-2" data-testid="thread-editor">
             <RichTextEditor
               value={newThreadBody}
               onChange={setNewThreadBody}
@@ -303,18 +305,17 @@ export function ThreadList({
               placeholder="新しいスレッドを作成..."
               disabled={isSubmitting}
               isSubmitting={isSubmitting}
-              users={users}
               minHeight={60}
               maxHeight={200}
-              resizable={true}
-              showToolbar={true}
-              textareaRef={newThreadTextareaRef}
+              showToolbar={false}
+              users={users}
+              textareaRef={textareaRef}
             />
             <FileUpload
               files={selectedFiles}
               onFilesChange={setSelectedFiles}
               disabled={isSubmitting}
-              textareaRef={newThreadTextareaRef}
+              attachButtonTestId="thread-attach-button"
             />
           </div>
         </div>
@@ -350,7 +351,8 @@ export function ThreadList({
                         ? "bg-blue-50 dark:bg-blue-950/30 hover:bg-blue-100 dark:hover:bg-blue-950/50"
                         : "hover:bg-muted/50"
                     )}
-                    data-testid={`thread-item-${thread.id}`}
+                    data-testid="thread-item"
+                    data-thread-id={thread.id}
                     data-unread={isUnread}
                   >
                     <div className="flex items-start justify-between gap-2">

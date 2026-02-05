@@ -1,4 +1,23 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, Locator } from "@playwright/test";
+
+/**
+ * TipTapエディタにテキストを入力するヘルパー関数
+ * TipTapはcontenteditableを使用するため、通常のfillではなくkeyboard入力を使用
+ */
+async function fillTiptapEditor(editor: Locator, text: string) {
+  const tiptap = editor.locator(".tiptap");
+  await tiptap.click();
+  await tiptap.fill(text);
+}
+
+/**
+ * シンプルなテキストエリアにテキストを入力するヘルパー関数
+ * スレッド作成用（RichTextEditor）
+ */
+async function fillSimpleEditor(editor: Locator, text: string) {
+  const textarea = editor.locator("textarea");
+  await textarea.fill(text);
+}
 
 test.describe("Messages Page", () => {
   test("メッセージ画面に遷移できる", async ({ page }) => {
@@ -24,24 +43,28 @@ test.describe("Messages Page", () => {
   test("スレッド作成フォームが表示される", async ({ page }) => {
     await page.goto("/messages");
 
-    // 新規スレッド作成のテキストエリアが表示される
-    const textarea = page.getByPlaceholder("新しいスレッドを作成...");
-    await expect(textarea).toBeVisible();
+    // 新規スレッド作成のエディタが表示される
+    const editor = page.getByTestId("thread-editor");
+    await expect(editor).toBeVisible({ timeout: 10000 });
+
+    // シンプルなテキストエリアが初期化されるまで待つ
+    const textarea = editor.locator("textarea");
+    await expect(textarea).toBeVisible({ timeout: 10000 });
   });
 
   test("新規スレッドを投稿できる", async ({ page }) => {
     await page.goto("/messages");
 
-    // テキストエリアを探す
-    const textarea = page.getByPlaceholder("新しいスレッドを作成...");
-    await expect(textarea).toBeVisible();
+    // エディタを探す
+    const editor = page.getByTestId("thread-editor");
+    await expect(editor).toBeVisible();
 
     // テスト用のメッセージを入力
     const testMessage = `テストスレッド ${Date.now()}`;
-    await textarea.fill(testMessage);
+    await fillSimpleEditor(editor, testMessage);
 
     // 送信ボタンをクリック
-    const sendButton = page.locator("button").filter({ has: page.locator("svg") }).last();
+    const sendButton = editor.locator("button").filter({ has: page.locator("svg") }).last();
     await sendButton.click();
 
     // スレッド一覧に投稿が表示されるまで待つ
@@ -51,11 +74,12 @@ test.describe("Messages Page", () => {
   test("スレッドを開いて返信できる", async ({ page }) => {
     await page.goto("/messages");
 
-    // スレッドを作成
-    const textarea = page.getByPlaceholder("新しいスレッドを作成...");
+    // スレッドを作成（シンプルなテキストエリア）
+    const threadEditor = page.getByTestId("thread-editor");
     const testMessage = `返信テスト ${Date.now()}`;
-    await textarea.fill(testMessage);
-    await textarea.press("Enter");
+    await fillSimpleEditor(threadEditor, testMessage);
+    // テキストエリアでEnterで送信
+    await threadEditor.locator("textarea").press("Enter");
 
     // スレッドが作成されるのを待つ（リロードして確認）
     await page.waitForTimeout(2000);
@@ -69,14 +93,14 @@ test.describe("Messages Page", () => {
     await expect(threadItem).toBeVisible({ timeout: 10000 });
     await threadItem.click();
 
-    // 返信用テキストエリアが表示される（詳細パネルが開いた証拠）
-    const replyTextarea = page.getByPlaceholder("返信を入力...");
-    await expect(replyTextarea).toBeVisible({ timeout: 10000 });
+    // 返信用エディタが表示される（詳細パネルが開いた証拠）
+    const replyEditor = page.getByTestId("reply-editor");
+    await expect(replyEditor).toBeVisible({ timeout: 10000 });
 
-    // 返信を入力して送信
+    // 返信を入力して送信（TipTapエディタ）
     const replyMessage = `返信メッセージ ${Date.now()}`;
-    await replyTextarea.fill(replyMessage);
-    await replyTextarea.press("Enter");
+    await fillTiptapEditor(replyEditor, replyMessage);
+    await replyEditor.locator(".tiptap").press("Enter");
 
     // 返信が表示される
     await expect(page.getByText(replyMessage)).toBeVisible({ timeout: 10000 });
@@ -129,19 +153,19 @@ test.describe("Messages Page", () => {
   test("検索でスレッドを絞り込める", async ({ page }) => {
     await page.goto("/messages");
 
-    // まずスレッドを作成
-    const textarea = page.getByPlaceholder("新しいスレッドを作成...");
+    // まずスレッドを作成（シンプルなテキストエリア）
+    const editor = page.getByTestId("thread-editor");
     const uniqueKeyword = `検索テスト_${Date.now()}`;
-    await textarea.fill(uniqueKeyword);
-    await textarea.press("Enter");
+    await fillSimpleEditor(editor, uniqueKeyword);
+    await editor.locator("textarea").press("Enter");
 
     // スレッドが作成されるのを待つ
     await expect(page.getByText(uniqueKeyword)).toBeVisible({ timeout: 10000 });
 
     // 別のスレッドを作成
     const otherMessage = `別のスレッド_${Date.now()}`;
-    await textarea.fill(otherMessage);
-    await textarea.press("Enter");
+    await fillSimpleEditor(editor, otherMessage);
+    await editor.locator("textarea").press("Enter");
     await expect(page.getByText(otherMessage)).toBeVisible({ timeout: 10000 });
 
     // 検索で絞り込み
@@ -162,11 +186,11 @@ test.describe("Messages Page", () => {
   test("スレッドにタグを追加できる", async ({ page }) => {
     await page.goto("/messages");
 
-    // スレッドを作成
-    const textarea = page.getByPlaceholder("新しいスレッドを作成...");
+    // スレッドを作成（シンプルなテキストエリア）
+    const editor = page.getByTestId("thread-editor");
     const testMessage = `タグテスト ${Date.now()}`;
-    await textarea.fill(testMessage);
-    await textarea.press("Enter");
+    await fillSimpleEditor(editor, testMessage);
+    await editor.locator("textarea").press("Enter");
 
     // スレッドが作成されるのを待つ
     await page.waitForTimeout(2000);
@@ -181,7 +205,7 @@ test.describe("Messages Page", () => {
     await threadItem.click();
 
     // 返信入力欄が表示される（詳細パネルが開いた証拠）
-    await expect(page.getByPlaceholder("返信を入力...")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId("reply-editor")).toBeVisible({ timeout: 10000 });
 
     // タグ追加ボタンを探す（exact: trueで正確にマッチ）
     const tagButton = page.getByRole("button", { name: "タグ", exact: true });
@@ -209,26 +233,19 @@ test.describe("Messages Page", () => {
   test("タグでスレッドをフィルタできる", async ({ page }) => {
     await page.goto("/messages");
 
-    // スレッドを作成
-    const textarea = page.getByPlaceholder("新しいスレッドを作成...");
+    // スレッドを作成（シンプルなテキストエリア）
+    const editor = page.getByTestId("thread-editor");
     const testMessage = `フィルタテスト ${Date.now()}`;
-    await textarea.fill(testMessage);
-    await textarea.press("Enter");
+    await fillSimpleEditor(editor, testMessage);
+    await editor.locator("textarea").press("Enter");
 
-    // スレッドが作成されるのを待つ
-    await page.waitForTimeout(2000);
-    await page.reload();
-
-    // スレッドリストにスレッドが表示されるまで待つ
-    await expect(page.getByText("スレッドがありません")).not.toBeVisible({ timeout: 10000 });
-
-    // スレッドをクリックして詳細を開く
-    const threadItem = page.getByRole("button", { name: new RegExp(testMessage) });
+    // optimistic updateにより即座にスレッドが表示される
+    const threadItem = page.getByTestId("thread-item").filter({ hasText: testMessage });
     await expect(threadItem).toBeVisible({ timeout: 10000 });
     await threadItem.click();
 
     // 返信入力欄が表示される（詳細パネルが開いた証拠）
-    await expect(page.getByPlaceholder("返信を入力...")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId("reply-editor")).toBeVisible({ timeout: 10000 });
 
     // タグ追加ボタンを探す（exact: trueで正確にマッチ）
     const tagButton = page.getByRole("button", { name: "タグ", exact: true });
@@ -292,11 +309,11 @@ test.describe("Messages Page", () => {
   test("スレッドを開くと既読になる", async ({ page }) => {
     await page.goto("/messages");
 
-    // スレッドを作成
-    const textarea = page.getByPlaceholder("新しいスレッドを作成...");
+    // スレッドを作成（シンプルなテキストエリア）
+    const editor = page.getByTestId("thread-editor");
     const testMessage = `既読テスト ${Date.now()}`;
-    await textarea.fill(testMessage);
-    await textarea.press("Enter");
+    await fillSimpleEditor(editor, testMessage);
+    await editor.locator("textarea").press("Enter");
 
     // スレッドが作成されるのを待つ
     await page.waitForTimeout(2000);
@@ -311,7 +328,7 @@ test.describe("Messages Page", () => {
     await threadItem.click();
 
     // 詳細パネルが開く
-    await expect(page.getByPlaceholder("返信を入力...")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId("reply-editor")).toBeVisible({ timeout: 10000 });
 
     // リロード後、未読バッジが消えていることを確認
     await page.reload();
@@ -352,44 +369,42 @@ test.describe("Messages Page", () => {
   test("返信を編集すると「編集済み」が表示される", async ({ page }) => {
     await page.goto("/messages");
 
-    // スレッドを作成
-    const textarea = page.getByPlaceholder("新しいスレッドを作成...");
+    // スレッドを作成（シンプルなテキストエリア）
+    const threadEditor = page.getByTestId("thread-editor");
     const testMessage = `編集テスト ${Date.now()}`;
-    await textarea.fill(testMessage);
-    await textarea.press("Enter");
+    await fillSimpleEditor(threadEditor, testMessage);
+    await threadEditor.locator("textarea").press("Enter");
 
-    // スレッドが作成されるのを待つ
-    await page.waitForTimeout(2000);
-    await page.reload();
-
-    // スレッドをクリックして詳細を開く
-    const threadItem = page.getByRole("button", { name: new RegExp(testMessage) });
+    // optimistic updateにより即座にスレッドが表示される
+    const threadItem = page.getByTestId("thread-item").filter({ hasText: testMessage });
     await expect(threadItem).toBeVisible({ timeout: 10000 });
     await threadItem.click();
 
     // 返信入力欄が表示される
-    const replyTextarea = page.getByPlaceholder("返信を入力...");
-    await expect(replyTextarea).toBeVisible({ timeout: 10000 });
+    const replyEditor = page.getByTestId("reply-editor");
+    await expect(replyEditor).toBeVisible({ timeout: 10000 });
 
-    // 返信を投稿
+    // 返信を投稿（TipTapエディタ）
     const originalReply = `元の返信 ${Date.now()}`;
-    await replyTextarea.fill(originalReply);
-    await replyTextarea.press("Enter");
+    await fillTiptapEditor(replyEditor, originalReply);
+    await replyEditor.locator(".tiptap").press("Enter");
 
     // 返信が表示されるのを待つ
     await expect(page.getByText(originalReply)).toBeVisible({ timeout: 10000 });
 
-    // 返信のメニューボタンをホバーして表示（groupクラス内）
-    const replyElement = page.locator(".group").filter({ hasText: originalReply });
+    // 返信のメニューボタンをホバーして表示
+    const replyElement = page.getByTestId("message-item").filter({ hasText: originalReply });
     await replyElement.hover();
 
     // メニューボタン（…）をクリック
-    const menuButton = replyElement.getByRole("button").filter({ has: page.locator("svg") }).first();
+    await page.waitForTimeout(500);
+    const menuButton = replyElement.getByTestId("message-menu-button");
+    await expect(menuButton).toBeVisible({ timeout: 5000 });
     await menuButton.click();
     await page.waitForTimeout(300);
 
-    // 編集ボタンをクリック（exact: trueでメニュー内のボタンのみ選択）
-    const editButton = page.getByRole("button", { name: "編集", exact: true });
+    // 編集ボタンをクリック
+    const editButton = page.getByTestId("message-edit-button");
     await expect(editButton).toBeVisible({ timeout: 5000 });
     await editButton.click();
 
@@ -413,44 +428,42 @@ test.describe("Messages Page", () => {
   test("返信を削除すると「削除されました」が表示される", async ({ page }) => {
     await page.goto("/messages");
 
-    // スレッドを作成
-    const textarea = page.getByPlaceholder("新しいスレッドを作成...");
+    // スレッドを作成（シンプルなテキストエリア）
+    const threadEditor = page.getByTestId("thread-editor");
     const testMessage = `削除テスト ${Date.now()}`;
-    await textarea.fill(testMessage);
-    await textarea.press("Enter");
+    await fillSimpleEditor(threadEditor, testMessage);
+    await threadEditor.locator("textarea").press("Enter");
 
-    // スレッドが作成されるのを待つ
-    await page.waitForTimeout(2000);
-    await page.reload();
-
-    // スレッドをクリックして詳細を開く
-    const threadItem = page.getByRole("button", { name: new RegExp(testMessage) });
+    // スレッドがoptimistic updateで即座に表示される
+    const threadItem = page.getByTestId("thread-item").filter({ hasText: testMessage });
     await expect(threadItem).toBeVisible({ timeout: 10000 });
     await threadItem.click();
 
     // 返信入力欄が表示される
-    const replyTextarea = page.getByPlaceholder("返信を入力...");
-    await expect(replyTextarea).toBeVisible({ timeout: 10000 });
+    const replyEditor = page.getByTestId("reply-editor");
+    await expect(replyEditor).toBeVisible({ timeout: 10000 });
 
-    // 返信を投稿
+    // 返信を投稿（TipTapエディタ）
     const replyToDelete = `削除する返信 ${Date.now()}`;
-    await replyTextarea.fill(replyToDelete);
-    await replyTextarea.press("Enter");
+    await fillTiptapEditor(replyEditor, replyToDelete);
+    await replyEditor.locator(".tiptap").press("Enter");
 
     // 返信が表示されるのを待つ
     await expect(page.getByText(replyToDelete)).toBeVisible({ timeout: 10000 });
 
     // 返信のメニューボタンをホバーして表示
-    const replyElement = page.locator(".group").filter({ hasText: replyToDelete });
+    const replyElement = page.getByTestId("message-item").filter({ hasText: replyToDelete });
     await replyElement.hover();
 
     // メニューボタン（…）をクリック
-    const menuButton = replyElement.getByRole("button").filter({ has: page.locator("svg") }).first();
+    await page.waitForTimeout(500);
+    const menuButton = replyElement.getByTestId("message-menu-button");
+    await expect(menuButton).toBeVisible({ timeout: 5000 });
     await menuButton.click();
     await page.waitForTimeout(300);
 
-    // 削除ボタンをクリック（exact: trueでメニュー内のボタンのみ選択）
-    const deleteButton = page.getByRole("button", { name: "削除", exact: true });
+    // 削除ボタンをクリック
+    const deleteButton = page.getByTestId("message-delete-button");
     await expect(deleteButton).toBeVisible({ timeout: 5000 });
     await deleteButton.click();
 
@@ -471,29 +484,25 @@ test.describe("Messages Page", () => {
   test("添付ボタンが表示される", async ({ page }) => {
     await page.goto("/messages");
 
-    // スレッドを作成してスレッド詳細を開く
-    const textarea = page.getByPlaceholder("新しいスレッドを作成...");
+    // スレッドを作成してスレッド詳細を開く（シンプルなテキストエリア）
+    const threadEditor = page.getByTestId("thread-editor");
     const testMessage = `添付テスト ${Date.now()}`;
-    await textarea.fill(testMessage);
-    await textarea.press("Enter");
+    await fillSimpleEditor(threadEditor, testMessage);
+    await threadEditor.locator("textarea").press("Enter");
 
-    // スレッドが作成されるのを待つ
-    await page.waitForTimeout(2000);
-    await page.reload();
-
-    // スレッドをクリックして詳細を開く
-    const threadItem = page.getByRole("button", { name: new RegExp(testMessage) });
+    // スレッドがoptimistic updateで即座に表示される
+    const threadItem = page.getByTestId("thread-item").filter({ hasText: testMessage });
     await expect(threadItem).toBeVisible({ timeout: 10000 });
     await threadItem.click();
 
     // 返信入力欄が表示される
-    await expect(page.getByPlaceholder("返信を入力...")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId("reply-editor")).toBeVisible({ timeout: 10000 });
 
-    // 添付ボタンが表示される（exact: trueでスレッドリストのボタンと区別）
-    const attachButton = page.getByRole("button", { name: "添付", exact: true });
+    // 返信エリアの添付ボタンが表示される（data-testidで特定）
+    const attachButton = page.getByTestId("reply-attach-button");
     await expect(attachButton).toBeVisible({ timeout: 5000 });
 
-    // ファイル数表示が存在する
-    await expect(page.getByText(/0\/5/)).toBeVisible();
+    // 返信エリア近くのファイル数表示が存在する（最後の"0/5"は返信エリア）
+    await expect(page.getByText(/0\/5/).last()).toBeVisible();
   });
 });

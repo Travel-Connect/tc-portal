@@ -61,6 +61,8 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
       ],
       // リンクは新しいタブで開く
       ADD_ATTR: ["target"],
+      // hrefのプロトコル制限（http, https, mailto のみ許可）
+      ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
     });
 
     // data属性をclassに変換
