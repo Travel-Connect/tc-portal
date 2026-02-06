@@ -2,21 +2,26 @@ import { test, expect, Locator } from "@playwright/test";
 
 /**
  * TipTapエディタにテキストを入力するヘルパー関数
- * TipTapはcontenteditableを使用するため、通常のfillではなくkeyboard入力を使用
+ * TipTapはcontenteditableを使用するため、編集可能になるまで待ってからキーボード入力
  */
 async function fillTiptapEditor(editor: Locator, text: string) {
   const tiptap = editor.locator(".tiptap");
+  // エディタが編集可能になるまで待機
+  await tiptap.waitFor({ state: "visible" });
   await tiptap.click();
-  await tiptap.fill(text);
+  // contenteditableが有効になるまで少し待つ
+  await tiptap.page().waitForTimeout(100);
+  // pressSequentiallyでキーボード入力（contenteditableに対してより信頼性が高い）
+  await tiptap.pressSequentially(text, { delay: 10 });
 }
 
 /**
  * シンプルなテキストエリアにテキストを入力するヘルパー関数
- * スレッド作成用（RichTextEditor）
+ * @deprecated WysiwygEditorに統一されたためfillTiptapEditorを使用してください
  */
 async function fillSimpleEditor(editor: Locator, text: string) {
-  const textarea = editor.locator("textarea");
-  await textarea.fill(text);
+  // WysiwygEditor（TipTap）に統一されたため、fillTiptapEditorを呼び出す
+  await fillTiptapEditor(editor, text);
 }
 
 test.describe("Messages Page", () => {
@@ -47,9 +52,9 @@ test.describe("Messages Page", () => {
     const editor = page.getByTestId("thread-editor");
     await expect(editor).toBeVisible({ timeout: 10000 });
 
-    // シンプルなテキストエリアが初期化されるまで待つ
-    const textarea = editor.locator("textarea");
-    await expect(textarea).toBeVisible({ timeout: 10000 });
+    // TipTapエディタが初期化されるまで待つ（WysiwygEditorに統一）
+    const tiptap = editor.locator(".tiptap");
+    await expect(tiptap).toBeVisible({ timeout: 10000 });
   });
 
   test("新規スレッドを投稿できる", async ({ page }) => {
@@ -74,12 +79,12 @@ test.describe("Messages Page", () => {
   test("スレッドを開いて返信できる", async ({ page }) => {
     await page.goto("/messages");
 
-    // スレッドを作成（シンプルなテキストエリア）
+    // スレッドを作成（WysiwygEditor / TipTap）
     const threadEditor = page.getByTestId("thread-editor");
     const testMessage = `返信テスト ${Date.now()}`;
-    await fillSimpleEditor(threadEditor, testMessage);
-    // テキストエリアでEnterで送信
-    await threadEditor.locator("textarea").press("Enter");
+    await fillTiptapEditor(threadEditor, testMessage);
+    // TipTapエディタでEnterで送信
+    await threadEditor.locator(".tiptap").press("Enter");
 
     // スレッドが作成されるのを待つ（リロードして確認）
     await page.waitForTimeout(2000);
@@ -157,15 +162,18 @@ test.describe("Messages Page", () => {
     const editor = page.getByTestId("thread-editor");
     const uniqueKeyword = `検索テスト_${Date.now()}`;
     await fillSimpleEditor(editor, uniqueKeyword);
-    await editor.locator("textarea").press("Enter");
+    await editor.locator(".tiptap").press("Enter");
 
     // スレッドが作成されるのを待つ
     await expect(page.getByText(uniqueKeyword)).toBeVisible({ timeout: 10000 });
 
+    // エディタがクリアされるのを待つ
+    await page.waitForTimeout(500);
+
     // 別のスレッドを作成
     const otherMessage = `別のスレッド_${Date.now()}`;
     await fillSimpleEditor(editor, otherMessage);
-    await editor.locator("textarea").press("Enter");
+    await editor.locator(".tiptap").press("Enter");
     await expect(page.getByText(otherMessage)).toBeVisible({ timeout: 10000 });
 
     // 検索で絞り込み
@@ -190,7 +198,7 @@ test.describe("Messages Page", () => {
     const editor = page.getByTestId("thread-editor");
     const testMessage = `タグテスト ${Date.now()}`;
     await fillSimpleEditor(editor, testMessage);
-    await editor.locator("textarea").press("Enter");
+    await editor.locator(".tiptap").press("Enter");
 
     // スレッドが作成されるのを待つ
     await page.waitForTimeout(2000);
@@ -237,7 +245,7 @@ test.describe("Messages Page", () => {
     const editor = page.getByTestId("thread-editor");
     const testMessage = `フィルタテスト ${Date.now()}`;
     await fillSimpleEditor(editor, testMessage);
-    await editor.locator("textarea").press("Enter");
+    await editor.locator(".tiptap").press("Enter");
 
     // optimistic updateにより即座にスレッドが表示される
     const threadItem = page.getByTestId("thread-item").filter({ hasText: testMessage });
@@ -313,7 +321,7 @@ test.describe("Messages Page", () => {
     const editor = page.getByTestId("thread-editor");
     const testMessage = `既読テスト ${Date.now()}`;
     await fillSimpleEditor(editor, testMessage);
-    await editor.locator("textarea").press("Enter");
+    await editor.locator(".tiptap").press("Enter");
 
     // スレッドが作成されるのを待つ
     await page.waitForTimeout(2000);
@@ -373,7 +381,7 @@ test.describe("Messages Page", () => {
     const threadEditor = page.getByTestId("thread-editor");
     const testMessage = `編集テスト ${Date.now()}`;
     await fillSimpleEditor(threadEditor, testMessage);
-    await threadEditor.locator("textarea").press("Enter");
+    await threadEditor.locator(".tiptap").press("Enter");
 
     // optimistic updateにより即座にスレッドが表示される
     const threadItem = page.getByTestId("thread-item").filter({ hasText: testMessage });
@@ -432,7 +440,7 @@ test.describe("Messages Page", () => {
     const threadEditor = page.getByTestId("thread-editor");
     const testMessage = `削除テスト ${Date.now()}`;
     await fillSimpleEditor(threadEditor, testMessage);
-    await threadEditor.locator("textarea").press("Enter");
+    await threadEditor.locator(".tiptap").press("Enter");
 
     // スレッドがoptimistic updateで即座に表示される
     const threadItem = page.getByTestId("thread-item").filter({ hasText: testMessage });
@@ -488,7 +496,7 @@ test.describe("Messages Page", () => {
     const threadEditor = page.getByTestId("thread-editor");
     const testMessage = `添付テスト ${Date.now()}`;
     await fillSimpleEditor(threadEditor, testMessage);
-    await threadEditor.locator("textarea").press("Enter");
+    await threadEditor.locator(".tiptap").press("Enter");
 
     // スレッドがoptimistic updateで即座に表示される
     const threadItem = page.getByTestId("thread-item").filter({ hasText: testMessage });

@@ -7,8 +7,9 @@ import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import { TextStyle } from "@tiptap/extension-text-style";
 import Color from "@tiptap/extension-color";
+import Image from "@tiptap/extension-image";
 import { Extension } from "@tiptap/core";
-import { useEffect, useCallback, forwardRef, useImperativeHandle } from "react";
+import { useEffect, useCallback, forwardRef, useImperativeHandle, useRef } from "react";
 import {
   Bold,
   Italic,
@@ -23,6 +24,7 @@ import {
   Type,
   Send,
   Loader2,
+  ImageIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -98,10 +100,52 @@ const SIZE_OPTIONS = [
   { value: "1.25rem", label: "大" },
 ] as const;
 
+// カスタムImage拡張（data-attachment-id属性対応）
+const CustomImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      "data-attachment-id": {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-attachment-id"),
+        renderHTML: (attributes) => {
+          if (!attributes["data-attachment-id"]) return {};
+          return { "data-attachment-id": attributes["data-attachment-id"] };
+        },
+      },
+      "data-object-path": {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-object-path"),
+        renderHTML: (attributes) => {
+          if (!attributes["data-object-path"]) return {};
+          return { "data-object-path": attributes["data-object-path"] };
+        },
+      },
+      "data-uploading": {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-uploading"),
+        renderHTML: (attributes) => {
+          if (!attributes["data-uploading"]) return {};
+          return { "data-uploading": attributes["data-uploading"] };
+        },
+      },
+    };
+  },
+});
+
+// 画像アップロード結果の型
+export interface ImageUploadResult {
+  attachmentId: string;
+  objectPath: string;
+  previewUrl: string;
+}
+
 export interface WysiwygEditorRef {
   focus: () => void;
   getHTML: () => string;
   clear: () => void;
+  /** テキストまたは画像があるかどうか */
+  hasContent: () => boolean;
 }
 
 interface WysiwygEditorProps {
@@ -116,6 +160,8 @@ interface WysiwygEditorProps {
   showToolbar?: boolean;
   className?: string;
   testId?: string;
+  /** 画像アップロードコールバック（指定すると画像貼り付けが有効になる） */
+  onImageUpload?: (file: File) => Promise<ImageUploadResult | null>;
 }
 
 /**
@@ -135,19 +181,137 @@ export const WysiwygEditor = forwardRef<WysiwygEditorRef, WysiwygEditorProps>(
       showToolbar = true,
       className,
       testId,
+      onImageUpload,
     },
     ref
   ) {
+    // 画像アップロード中のプレースホルダ管理
+    const uploadingImagesRef = useRef<Map<string, string>>(new Map());
+
+    // 画像ペースト/ドロップ処理
+    const handleImageInsert = useCallback(
+      async (file: File, editorInstance: Editor) => {
+        if (!onImageUpload) return;
+
+        // 一時ID生成
+        const tempId = `uploading-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+        // ローカルプレビューURL
+        const previewUrl = URL.createObjectURL(file);
+        uploadingImagesRef.current.set(tempId, previewUrl);
+
+        // プレースホルダ画像を挿入
+        editorInstance
+          .chain()
+          .focus()
+          .setImage({
+            src: previewUrl,
+            "data-uploading": tempId,
+          } as unknown as { src: string })
+          .run();
+
+        try {
+          // アップロード実行
+          const result = await onImageUpload(file);
+
+          if (result) {
+            // プレースホルダを本物の画像に差し替え
+            const { state } = editorInstance;
+            let found = false;
+
+            state.doc.descendants((node, pos) => {
+              if (found) return false;
+              if (
+                node.type.name === "image" &&
+                node.attrs["data-uploading"] === tempId
+              ) {
+                editorInstance
+                  .chain()
+                  .setNodeSelection(pos)
+                  .deleteSelection()
+                  .setImage({
+                    src: result.previewUrl,
+                    "data-attachment-id": result.attachmentId,
+                    "data-object-path": result.objectPath,
+                  } as unknown as { src: string })
+                  .run();
+                found = true;
+                return false;
+              }
+            });
+          } else {
+            // アップロード失敗 - プレースホルダを削除
+            removeUploadingImage(editorInstance, tempId);
+          }
+        } catch (error) {
+          console.error("Image upload failed:", error);
+          // エラー時もプレースホルダを削除
+          removeUploadingImage(editorInstance, tempId);
+        } finally {
+          // プレビューURLを解放
+          const url = uploadingImagesRef.current.get(tempId);
+          if (url) {
+            URL.revokeObjectURL(url);
+            uploadingImagesRef.current.delete(tempId);
+          }
+        }
+      },
+      [onImageUpload]
+    );
+
+    // プレースホルダ画像を削除
+    const removeUploadingImage = (editorInstance: Editor, tempId: string) => {
+      const { state } = editorInstance;
+      state.doc.descendants((node, pos) => {
+        if (
+          node.type.name === "image" &&
+          node.attrs["data-uploading"] === tempId
+        ) {
+          editorInstance.chain().setNodeSelection(pos).deleteSelection().run();
+          return false;
+        }
+      });
+    };
+
     const editor = useEditor({
       immediatelyRender: false, // SSR対応
       extensions: [
         StarterKit.configure({
-          // 必要な機能だけ有効化
+          // 必要な機能を有効化
           heading: false,
           horizontalRule: false,
+          // リスト機能を明示的に有効化
+          bulletList: {
+            HTMLAttributes: {
+              class: "list-disc ml-4 my-2",
+            },
+          },
+          orderedList: {
+            HTMLAttributes: {
+              class: "list-decimal ml-4 my-2",
+            },
+          },
+          listItem: {
+            HTMLAttributes: {
+              class: "my-1",
+            },
+          },
+          // 引用機能
+          blockquote: {
+            HTMLAttributes: {
+              class: "border-l-4 border-gray-300 pl-4 my-2 text-gray-600 dark:text-gray-400",
+            },
+          },
+          // コードブロック
           codeBlock: {
             HTMLAttributes: {
-              class: "bg-gray-800 text-gray-100 p-4 rounded-lg overflow-x-auto",
+              class: "bg-gray-800 text-gray-100 p-4 rounded-lg overflow-x-auto my-2 font-mono text-sm",
+            },
+          },
+          // インラインコード
+          code: {
+            HTMLAttributes: {
+              class: "bg-gray-200 dark:bg-gray-700 px-1 py-0.5 rounded text-sm font-mono",
             },
           },
         }),
@@ -164,6 +328,14 @@ export const WysiwygEditor = forwardRef<WysiwygEditorRef, WysiwygEditorProps>(
         TextStyle,
         Color,
         FontSize,
+        // 画像拡張（onImageUploadが指定されている場合のみ有効）
+        CustomImage.configure({
+          inline: false,
+          allowBase64: false,
+          HTMLAttributes: {
+            class: "rounded max-w-full my-2",
+          },
+        }),
       ],
       content: value,
       editable: !disabled && !isSubmitting,
@@ -179,22 +351,83 @@ export const WysiwygEditor = forwardRef<WysiwygEditorRef, WysiwygEditorProps>(
           style: `min-height: ${minHeight}px; max-height: ${maxHeight}px; overflow-y: auto;`,
         },
         handleKeyDown: (view, event) => {
-          // Enter で送信（Shift+Enter で改行）
-          if (event.key === "Enter" && !event.shiftKey && onSubmit) {
+          // Ctrl+Enter (Windows) または Cmd+Enter (Mac) で送信
+          if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && onSubmit) {
             event.preventDefault();
             onSubmit();
             return true;
+          }
+          // 通常の Enter は改行 / リスト項目追加（TipTapのデフォルト動作）
+          return false;
+        },
+        // クリップボード貼り付け処理
+        handlePaste: (view, event) => {
+          if (!onImageUpload) return false;
+
+          const items = event.clipboardData?.items;
+          if (!items) return false;
+
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (item.type.startsWith("image/")) {
+              event.preventDefault();
+              const file = item.getAsFile();
+              if (file) {
+                const editorInstance = view.state as unknown;
+                // editorを取得してhandleImageInsertを呼び出す
+                if (editor) {
+                  handleImageInsert(file, editor);
+                }
+              }
+              return true;
+            }
+          }
+          return false;
+        },
+        // ドラッグ&ドロップ処理
+        handleDrop: (view, event) => {
+          if (!onImageUpload) return false;
+
+          const files = event.dataTransfer?.files;
+          if (!files || files.length === 0) return false;
+
+          for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            if (file.type.startsWith("image/")) {
+              event.preventDefault();
+              if (editor) {
+                handleImageInsert(file, editor);
+              }
+              return true;
+            }
           }
           return false;
         },
       },
     });
 
+    // エディタにコンテンツ（テキストまたは画像）があるかチェック
+    const hasContent = useCallback(() => {
+      if (!editor) return false;
+      const text = editor.getText().trim();
+      if (text.length > 0) return true;
+      // 画像ノードがあるかチェック
+      let hasImage = false;
+      editor.state.doc.descendants((node) => {
+        if (node.type.name === "image") {
+          hasImage = true;
+          return false; // 見つかったら終了
+        }
+      });
+      return hasImage;
+    }, [editor]);
+
     // refを外部に公開
     useImperativeHandle(ref, () => ({
       focus: () => editor?.commands.focus(),
       getHTML: () => editor?.getHTML() || "",
       clear: () => editor?.commands.clearContent(),
+      hasContent,
     }));
 
     // valueが外部から変更された場合に同期
@@ -211,9 +444,8 @@ export const WysiwygEditor = forwardRef<WysiwygEditorRef, WysiwygEditorProps>(
       }
     }, [editor, disabled, isSubmitting]);
 
-    // 送信ボタンの有効/無効
-    const canSubmit =
-      editor && editor.getText().trim().length > 0 && !isSubmitting && !disabled;
+    // 送信ボタンの有効/無効（テキストまたは画像があれば送信可能）
+    const canSubmit = editor && hasContent() && !isSubmitting && !disabled;
 
     // エディタがまだ初期化されていない場合はプレースホルダーを表示
     if (!editor) {
@@ -247,7 +479,12 @@ export const WysiwygEditor = forwardRef<WysiwygEditorRef, WysiwygEditorProps>(
       >
         {/* ツールバー */}
         {showToolbar && (
-          <EditorToolbar editor={editor} disabled={disabled || isSubmitting} />
+          <EditorToolbar
+            editor={editor}
+            disabled={disabled || isSubmitting}
+            onImageUpload={onImageUpload}
+            onImageInsert={handleImageInsert}
+          />
         )}
 
         {/* エディタ本体 */}
@@ -275,7 +512,7 @@ export const WysiwygEditor = forwardRef<WysiwygEditorRef, WysiwygEditorProps>(
 
         {/* ヘルプテキスト */}
         <div className="px-3 py-1.5 text-xs text-muted-foreground border-t bg-muted/10">
-          <span>Enter で送信 / Shift+Enter で改行</span>
+          <span>Ctrl+Enter で送信</span>
           {showToolbar && (
             <span className="ml-2">/ Ctrl+B 太字, Ctrl+I 斜体</span>
           )}
@@ -291,16 +528,36 @@ export const WysiwygEditor = forwardRef<WysiwygEditorRef, WysiwygEditorProps>(
 function EditorToolbar({
   editor,
   disabled,
+  onImageUpload,
+  onImageInsert,
 }: {
   editor: Editor;
   disabled?: boolean;
+  onImageUpload?: (file: File) => Promise<ImageUploadResult | null>;
+  onImageInsert?: (file: File, editor: Editor) => void;
 }) {
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
   const setLink = useCallback(() => {
     const url = prompt("URLを入力してください:", "https://");
     if (url) {
       editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
     }
   }, [editor]);
+
+  const handleImageSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file && file.type.startsWith("image/") && onImageInsert) {
+        onImageInsert(file, editor);
+      }
+      // inputをリセット
+      if (imageInputRef.current) {
+        imageInputRef.current.value = "";
+      }
+    },
+    [editor, onImageInsert]
+  );
 
   return (
     <div className="flex items-center gap-0.5 p-1 border-b bg-muted/30 rounded-t-md flex-wrap">
@@ -388,6 +645,25 @@ function EditorToolbar({
         isActive={editor.isActive("codeBlock")}
         disabled={disabled}
       />
+
+      {/* 画像挿入 */}
+      {onImageUpload && (
+        <>
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleImageSelect}
+          />
+          <ToolbarButton
+            icon={<ImageIcon className="h-4 w-4" />}
+            title="画像を挿入"
+            onClick={() => imageInputRef.current?.click()}
+            disabled={disabled}
+          />
+        </>
+      )}
 
       <Separator />
 

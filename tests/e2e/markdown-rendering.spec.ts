@@ -11,17 +11,18 @@ async function fillTiptapEditor(editor: Locator, text: string) {
 
 /**
  * スレッドを作成して開くヘルパー関数
- * シンプルなテキストエリア（RichTextEditor）でスレッドを作成
+ * WysiwygEditor（TipTap）でスレッドを作成
  */
 async function createAndOpenThread(page: import("@playwright/test").Page, testId: number) {
-  // スレッド作成エディタ（シンプルなテキストエリア）
+  // スレッド作成エディタ（WysiwygEditor / TipTap）
   const threadEditor = page.getByTestId("thread-editor");
   await expect(threadEditor).toBeVisible({ timeout: 10000 });
 
-  // テキストエリアに入力
-  const textarea = threadEditor.locator("textarea");
-  await textarea.fill(`テストスレッド${testId}`);
-  await textarea.press("Enter");
+  // TipTapエディタに入力
+  const tiptap = threadEditor.locator(".tiptap");
+  await tiptap.click();
+  await tiptap.fill(`テストスレッド${testId}`);
+  await tiptap.press("Enter");
 
   // スレッドが作成されるまで待つ
   const threadItem = page.getByTestId("thread-item").filter({ hasText: `${testId}` });

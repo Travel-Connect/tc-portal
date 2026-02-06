@@ -346,6 +346,7 @@ export function MessageItem({
                 <>
                   <MarkdownRenderer
                     content={message.body}
+                    format={message.format}
                     className={cn("text-sm", isOwner && "text-primary-foreground [&_a]:text-primary-foreground [&_a]:underline")}
                   />
                   {message.attachments && message.attachments.length > 0 && (

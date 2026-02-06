@@ -344,6 +344,9 @@ export const TOOL_TYPE_OPTIONS: { value: ToolType; label: string }[] = [
 // Chat Types
 // =====================================================
 
+// メッセージの保存形式
+export type MessageFormat = 'markdown' | 'html';
+
 export interface ChatChannel {
   id: string;
   slug: string;
@@ -359,6 +362,7 @@ export interface ChatMessage {
   channel_id: string;
   parent_id: string | null;
   body: string;
+  format: MessageFormat;
   created_by: string | null;
   created_at: string;
   updated_at: string | null;
@@ -451,6 +455,7 @@ export interface ThreadWithUnreadRow {
   channel_id: string;
   parent_id: string | null;
   body: string;
+  format?: MessageFormat; // RPC関数からは返らない可能性があるためoptional
   created_by: string | null;
   created_at: string;
   updated_at: string | null;

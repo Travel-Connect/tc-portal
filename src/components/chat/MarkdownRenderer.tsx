@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useEffect, useState, useRef, useCallback } from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import type { MessageFormat } from "@/types/database";
+import { ImageModal } from "./ImageModal";
 
 // 色のマッピング（data-color → Tailwind class）
 const COLOR_CLASS_MAP: Record<string, string> = {
@@ -23,21 +25,36 @@ const SIZE_CLASS_MAP: Record<string, string> = {
 interface MarkdownRendererProps {
   content: string;
   className?: string;
+  /** メッセージの保存形式（デフォルト: markdown） */
+  format?: MessageFormat;
 }
 
 /**
- * Markdown + カスタムHTML（<u>, <span data-*>, <mention>）をレンダリング
+ * Markdown/HTML + カスタムHTML（<u>, <span data-*>, <mention>, <img>）をレンダリング
  * XSS対策としてDOMPurifyでサニタイズ
+ * インライン画像のdata-attachment-idを署名URLに解決
  */
-export function MarkdownRenderer({ content, className }: MarkdownRendererProps) {
-  const html = useMemo(() => {
+export function MarkdownRenderer({ content, className, format = "markdown" }: MarkdownRendererProps) {
+  const [imageUrls, setImageUrls] = useState<Map<string, string>>(new Map());
+  const [selectedImage, setSelectedImage] = useState<{ src: string; alt?: string } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // サニタイズ済みHTML（画像URL解決前）
+  const sanitizedHtml = useMemo(() => {
     if (!content) return "";
 
-    // Markdownをパース（GFM有効）
-    const rawHtml = marked.parse(content, {
-      gfm: true,
-      breaks: true,
-    }) as string;
+    let rawHtml: string;
+
+    if (format === "html") {
+      // HTMLフォーマット：そのまま使用
+      rawHtml = content;
+    } else {
+      // Markdownフォーマット：パース（GFM有効）
+      rawHtml = marked.parse(content, {
+        gfm: true,
+        breaks: true,
+      }) as string;
+    }
 
     // DOMPurifyの設定
     // 許可するタグと属性を設定
@@ -51,39 +68,135 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
         "blockquote", "code", "pre",
         // リンク
         "a",
+        // 画像（インライン画像対応）
+        "img",
         // カスタムタグ
         "mention",
       ],
       ALLOWED_ATTR: [
         "href", "target", "rel",
         "data-color", "data-size", "data-user-id",
+        // 画像用属性
+        "src", "alt", "data-attachment-id", "data-object-path",
         "class",
       ],
       // リンクは新しいタブで開く
       ADD_ATTR: ["target"],
       // hrefのプロトコル制限（http, https, mailto のみ許可）
-      ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
+      ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|data):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
     });
 
-    // data属性をclassに変換
-    const processedHtml = convertDataAttributesToClasses(cleanHtml);
+    return cleanHtml;
+  }, [content, format]);
 
-    return processedHtml;
-  }, [content]);
+  // 画像のattachment IDを抽出して署名URLを取得
+  useEffect(() => {
+    if (!sanitizedHtml || typeof window === "undefined") return;
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(sanitizedHtml, "text/html");
+    const images = doc.querySelectorAll("img[data-attachment-id]");
+
+    const attachmentIds: string[] = [];
+    images.forEach((img) => {
+      const id = img.getAttribute("data-attachment-id");
+      if (id && !imageUrls.has(id)) {
+        attachmentIds.push(id);
+      }
+    });
+
+    if (attachmentIds.length === 0) return;
+
+    // 署名URLを並列取得
+    Promise.all(
+      attachmentIds.map(async (id) => {
+        try {
+          const res = await fetch(`/api/chat/attachments/${id}/preview`);
+          if (res.ok) {
+            const data = await res.json();
+            return { id, url: data.url };
+          }
+          return { id, url: null };
+        } catch {
+          return { id, url: null };
+        }
+      })
+    ).then((results) => {
+      const newUrls = new Map(imageUrls);
+      let updated = false;
+      results.forEach(({ id, url }) => {
+        if (url && !newUrls.has(id)) {
+          newUrls.set(id, url);
+          updated = true;
+        }
+      });
+      if (updated) {
+        setImageUrls(newUrls);
+      }
+    });
+  }, [sanitizedHtml, imageUrls]);
+
+  // 最終的なHTML（画像URL解決済み + クラス変換）
+  const finalHtml = useMemo(() => {
+    if (!sanitizedHtml) return "";
+
+    // data属性をclassに変換 + 画像URL解決
+    return convertDataAttributesToClasses(sanitizedHtml, imageUrls);
+  }, [sanitizedHtml, imageUrls]);
+
+  // 画像クリックハンドラ
+  const handleImageClick = useCallback((e: MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.tagName === "IMG") {
+      const img = target as HTMLImageElement;
+      setSelectedImage({ src: img.src, alt: img.alt });
+    }
+  }, []);
+
+  // 画像にクリックイベントを追加
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    // 全ての画像にクリックハンドラとカーソルスタイルを追加
+    const images = container.querySelectorAll("img");
+    images.forEach((img) => {
+      img.style.cursor = "pointer";
+      img.addEventListener("click", handleImageClick);
+    });
+
+    return () => {
+      images.forEach((img) => {
+        img.removeEventListener("click", handleImageClick);
+      });
+    };
+  }, [finalHtml, handleImageClick]);
 
   return (
-    <div
-      className={`markdown-content ${className || ""}`}
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+    <>
+      <div
+        ref={containerRef}
+        className={`markdown-content ${className || ""}`}
+        dangerouslySetInnerHTML={{ __html: finalHtml }}
+      />
+      {selectedImage && (
+        <ImageModal
+          isOpen={!!selectedImage}
+          onClose={() => setSelectedImage(null)}
+          src={selectedImage.src}
+          alt={selectedImage.alt}
+        />
+      )}
+    </>
   );
 }
 
 /**
  * data-color, data-size属性をTailwindクラスに変換
  * <mention>タグにハイライトクラスを追加
+ * インライン画像のsrcを署名URLに解決
  */
-function convertDataAttributesToClasses(html: string): string {
+function convertDataAttributesToClasses(html: string, imageUrls: Map<string, string>): string {
   // DOMParserを使ってHTMLを解析（クライアントサイドのみ）
   if (typeof window === "undefined") {
     return html;
@@ -128,6 +241,16 @@ function convertDataAttributesToClasses(html: string): string {
     el.setAttribute("target", "_blank");
     el.setAttribute("rel", "noopener noreferrer");
     el.classList.add("text-blue-600", "dark:text-blue-400", "underline", "hover:no-underline");
+  });
+
+  // インライン画像のsrcを署名URLに解決
+  doc.querySelectorAll("img[data-attachment-id]").forEach((el) => {
+    const attachmentId = el.getAttribute("data-attachment-id");
+    if (attachmentId && imageUrls.has(attachmentId)) {
+      el.setAttribute("src", imageUrls.get(attachmentId)!);
+    }
+    // 画像スタイルを追加
+    el.classList.add("rounded", "max-w-full", "my-2", "inline-block");
   });
 
   return doc.body.innerHTML;
@@ -185,5 +308,11 @@ export const markdownStyles = `
   }
   .markdown-content u {
     text-decoration: underline;
+  }
+  .markdown-content img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.5em;
+    margin: 0.5em 0;
   }
 `;

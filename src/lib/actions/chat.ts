@@ -7,6 +7,7 @@ import type {
   ChatMessageWithAuthor,
   ChatTag,
   ChatSearchResult,
+  MessageFormat,
 } from "@/types/database";
 
 /**
@@ -14,7 +15,8 @@ import type {
  */
 export async function createThread(
   channelId: string,
-  body: string
+  body: string,
+  format: MessageFormat = "html"
 ): Promise<{
   success: boolean;
   thread?: ChatThreadWithDetails;
@@ -22,7 +24,7 @@ export async function createThread(
 }> {
   const supabase = await createClient();
 
-  const {       
+  const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
@@ -35,6 +37,7 @@ export async function createThread(
       channel_id: channelId,
       parent_id: null,
       body,
+      format,
       created_by: user.id,
     })
     .select(`
@@ -57,7 +60,8 @@ export async function createThread(
  */
 export async function createReply(
   threadId: string,
-  body: string
+  body: string,
+  format: MessageFormat = "html"
 ): Promise<{
   success: boolean;
   message?: ChatMessageWithAuthor;
@@ -90,6 +94,7 @@ export async function createReply(
       channel_id: parentThread.channel_id,
       parent_id: threadId,
       body,
+      format,
       created_by: user.id,
     })
     .select(`
@@ -345,9 +350,10 @@ export async function updateMessage(
     return { success: false, error: "削除されたメッセージは編集できません" };
   }
 
+  // 編集時は常にHTML形式に変換（Markdown→HTML移行）
   const { data, error } = await supabase
     .from("chat_messages")
-    .update({ body: trimmedBody })
+    .update({ body: trimmedBody, format: "html" })
     .eq("id", messageId)
     .select(`
       *,
@@ -681,6 +687,97 @@ export async function uploadAttachment(
   }
 
   return { success: true, attachment: data };
+}
+
+/**
+ * インライン画像をアップロード（WYSIWYGエディタ用）
+ * メッセージ作成前に呼び出し、HTMLにdata-attachment-idを埋め込む
+ */
+export async function uploadInlineImage(
+  channelId: string,
+  threadId: string,
+  file: File
+): Promise<{
+  success: boolean;
+  attachmentId?: string;
+  objectPath?: string;
+  previewUrl?: string;
+  error?: string;
+}> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "ログインが必要です" };
+  }
+
+  // 画像ファイルかチェック
+  if (!file.type.startsWith("image/")) {
+    return { success: false, error: "画像ファイルのみアップロードできます" };
+  }
+
+  // ファイルサイズチェック（インライン画像も同じ制限）
+  if (file.size > MAX_FILE_SIZE) {
+    return {
+      success: false,
+      error: `ファイルサイズが大きすぎます（最大${formatFileSize(MAX_FILE_SIZE)}）`,
+    };
+  }
+
+  // ファイルパスを生成（インライン画像用のパス）
+  const uuid = crypto.randomUUID();
+  const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const effectiveThreadId = threadId || "new";
+  const objectPath = `chat/${channelId}/${effectiveThreadId}/inline/${uuid}_${sanitizedFileName}`;
+
+  // Storageにアップロード
+  const { error: uploadError } = await supabase.storage
+    .from(CHAT_ATTACHMENTS_BUCKET)
+    .upload(objectPath, file, {
+      contentType: file.type,
+      upsert: false,
+    });
+
+  if (uploadError) {
+    console.error("Error uploading inline image:", uploadError);
+    return { success: false, error: uploadError.message };
+  }
+
+  // メタ情報をDBに保存（message_idは後でメッセージ作成時に紐付け）
+  const { data: attachment, error: insertError } = await supabase
+    .from("chat_attachments")
+    .insert({
+      message_id: null, // 後でメッセージ作成時に更新
+      bucket_id: CHAT_ATTACHMENTS_BUCKET,
+      object_path: objectPath,
+      file_name: file.name,
+      mime_type: file.type || null,
+      size_bytes: file.size,
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
+
+  if (insertError) {
+    console.error("Error inserting inline image record:", insertError);
+    // Storageからも削除を試みる
+    await supabase.storage.from(CHAT_ATTACHMENTS_BUCKET).remove([objectPath]);
+    return { success: false, error: insertError.message };
+  }
+
+  // プレビュー用の署名URL取得（5分間有効）
+  const { data: signedUrlData } = await supabase.storage
+    .from(CHAT_ATTACHMENTS_BUCKET)
+    .createSignedUrl(objectPath, 300);
+
+  return {
+    success: true,
+    attachmentId: attachment.id,
+    objectPath,
+    previewUrl: signedUrlData?.signedUrl,
+  };
 }
 
 /**

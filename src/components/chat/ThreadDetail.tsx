@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { X, Loader2, Settings, Pencil, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -18,11 +18,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { createReply, markThreadAsRead, uploadAttachment, getMentionableUsers, getMessagesReactions, updateMessage, deleteMessage } from "@/lib/actions/chat";
+import { createReply, markThreadAsRead, uploadAttachment, getMentionableUsers, getMessagesReactions, updateMessage, deleteMessage, uploadInlineImage } from "@/lib/actions/chat";
 import { TagInput } from "./TagInput";
 import { MessageItem, groupMessages } from "./MessageItem";
 import { FileUpload } from "./FileUpload";
-import { WysiwygEditor, WysiwygEditorRef } from "./WysiwygEditor";
+import { WysiwygEditor, WysiwygEditorRef, ImageUploadResult } from "./WysiwygEditor";
 import type { ChatMessageWithAuthor, ChatTag, ChatAttachment, Profile, ReactionSummary } from "@/types/database";
 
 interface ThreadDetailProps {
@@ -439,11 +439,18 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
 
   const handleSubmit = async () => {
     // useRefで同期的に二重送信を防止
-    if (!replyBody.trim() || isSubmittingRef.current) return;
+    if (isSubmittingRef.current) return;
+
+    // コンテンツ（テキストまたは画像）があるかチェック
+    const hasContent = replyEditorRef.current?.hasContent() ?? false;
+    if (!hasContent) return;
 
     isSubmittingRef.current = true;
     setIsSubmitting(true);
-    const result = await createReply(threadId, replyBody.trim());
+
+    // HTMLを取得して送信（画像のみの場合も空の<p>タグなどを含むHTMLが取得される）
+    const html = replyEditorRef.current?.getHTML() || "";
+    const result = await createReply(threadId, html);
 
     if (result.success && result.message) {
       // 添付ファイルをアップロード
@@ -460,6 +467,7 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
       // Realtimeで追加されるため、ここでは追加しない
       setReplyBody("");
       setSelectedFiles([]);
+      replyEditorRef.current?.clear();
     } else {
       console.error("Failed to create reply:", result.error);
     }
@@ -467,6 +475,24 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
     setIsSubmitting(false);
     isSubmittingRef.current = false;
   };
+
+  // 画像アップロードハンドラー（インライン画像用）
+  const handleImageUpload = useCallback(async (file: File): Promise<ImageUploadResult | null> => {
+    if (!channelId) return null;
+
+    const result = await uploadInlineImage(channelId, threadId, file);
+
+    if (result.success && result.attachmentId && result.objectPath && result.previewUrl) {
+      return {
+        attachmentId: result.attachmentId,
+        objectPath: result.objectPath,
+        previewUrl: result.previewUrl,
+      };
+    }
+
+    console.error("Failed to upload image:", result.error);
+    return null;
+  }, [channelId, threadId]);
 
   // リアクション変更ハンドラ
   const handleReactionChange = (messageId: string, newReactions: ReactionSummary[]) => {
@@ -527,6 +553,15 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
   // スレッド所有者かどうか
   const isThreadOwner = thread?.created_by === currentUserId;
 
+  // HTMLタグを除去してプレーンテキストを取得
+  const stripHtml = (html: string) => {
+    if (typeof document !== "undefined") {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      return doc.body.textContent || "";
+    }
+    return html.replace(/<[^>]*>/g, "");
+  };
+
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -549,9 +584,16 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
   return (
     <div className="flex flex-col h-full">
       {/* ヘッダー */}
-      <div className="flex items-center justify-between p-4 border-b">
-        <h2 className="font-semibold">スレッド</h2>
-        <div className="flex items-center gap-1">
+      <div className="flex items-center justify-between p-4 border-b bg-muted/30">
+        <div className="flex-1 min-w-0 mr-2">
+          <h2 className="font-semibold text-xs text-muted-foreground">スレッド</h2>
+          {thread && (
+            <p className="text-sm font-medium truncate mt-0.5">
+              {stripHtml(thread.body) || "（本文なし）"}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-1 flex-shrink-0">
           {/* スレッド所有者のみ編集/削除メニューを表示 */}
           {isThreadOwner && thread && !thread.deleted_at && (
             <Popover open={isHeaderMenuOpen} onOpenChange={setIsHeaderMenuOpen}>
@@ -735,6 +777,7 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
             maxHeight={200}
             showToolbar={true}
             testId="reply-editor"
+            onImageUpload={handleImageUpload}
           />
           <FileUpload
             files={selectedFiles}
