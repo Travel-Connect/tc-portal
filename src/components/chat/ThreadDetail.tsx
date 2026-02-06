@@ -1,14 +1,28 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { X, Loader2 } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { X, Loader2, Settings, Pencil, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
-import { createReply, markThreadAsRead, uploadAttachment, getMentionableUsers, getMessagesReactions } from "@/lib/actions/chat";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { createReply, markThreadAsRead, uploadAttachment, getMentionableUsers, getMessagesReactions, updateMessage, deleteMessage, uploadInlineImage } from "@/lib/actions/chat";
 import { TagInput } from "./TagInput";
 import { MessageItem, groupMessages } from "./MessageItem";
 import { FileUpload } from "./FileUpload";
-import { RichTextEditor } from "./RichTextEditor";
+import { WysiwygEditor, WysiwygEditorRef, ImageUploadResult } from "./WysiwygEditor";
 import type { ChatMessageWithAuthor, ChatTag, ChatAttachment, Profile, ReactionSummary } from "@/types/database";
 
 interface ThreadDetailProps {
@@ -27,9 +41,15 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [channelId, setChannelId] = useState<string | null>(null);
   const [users, setUsers] = useState<Profile[]>([]);
+  // スレッドヘッダーの編集/削除用
+  const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
+  const [isHeaderEditDialogOpen, setIsHeaderEditDialogOpen] = useState(false);
+  const [isHeaderDeleteDialogOpen, setIsHeaderDeleteDialogOpen] = useState(false);
+  const [editThreadBody, setEditThreadBody] = useState("");
+  const [isEditingThread, setIsEditingThread] = useState(false);
   const isSubmittingRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const replyTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const replyEditorRef = useRef<WysiwygEditorRef>(null);
 
   // メンション用ユーザー一覧を取得
   useEffect(() => {
@@ -136,7 +156,16 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
     fetchThread();
   }, [threadId]);
 
-  // Realtime購読（返信のINSERT/UPDATE、親スレッドのUPDATE）
+  // 表示中のメッセージIDを追跡するref（Realtimeコールバック内で使用）
+  const messageIdsRef = useRef<Set<string>>(new Set([threadId]));
+
+  // repliesが変更されたらmessageIdsRefを更新
+  useEffect(() => {
+    const ids = new Set([threadId, ...replies.map((r) => r.id)]);
+    messageIdsRef.current = ids;
+  }, [threadId, replies]);
+
+  // Realtime購読（返信のINSERT/UPDATE、親スレッドのUPDATE、リアクション、添付ファイル）
   useEffect(() => {
     const supabase = createClient();
     const channel = supabase
@@ -164,8 +193,16 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
             ...newReply,
             profiles: profile as Profile | null,
             reactions: [],
+            attachments: [],
           };
-          setReplies((prev) => [...prev, newMessage]);
+
+          setReplies((prev) => {
+            // 重複チェック（自分の投稿がRealtimeで再度来た場合）
+            if (prev.some((r) => r.id === newReply.id)) {
+              return prev;
+            }
+            return [...prev, newMessage];
+          });
         }
       )
       // 返信のUPDATE（編集・削除）
@@ -190,7 +227,7 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
           setReplies((prev) =>
             prev.map((r) =>
               r.id === updatedReply.id
-                ? { ...updatedReply, profiles: profile as Profile | null, reactions: r.reactions }
+                ? { ...updatedReply, profiles: profile as Profile | null, reactions: r.reactions, attachments: r.attachments }
                 : r
             )
           );
@@ -219,7 +256,173 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
             ...updatedThread,
             profiles: profile as Profile | null,
             reactions: prev?.reactions || [],
+            attachments: prev?.attachments || [],
           }));
+        }
+      )
+      // リアクションのINSERT（他ユーザーのリアクション追加を反映）
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chat_message_reactions",
+        },
+        async (payload) => {
+          const newReaction = payload.new as {
+            id: string;
+            message_id: string;
+            user_id: string;
+            emoji: string;
+          };
+
+          // 自分のリアクションはoptimisticで処理済みなのでスキップ
+          if (newReaction.user_id === currentUserId) {
+            return;
+          }
+
+          // このスレッドのメッセージでない場合はスキップ
+          if (!messageIdsRef.current.has(newReaction.message_id)) {
+            return;
+          }
+
+          // ユーザー情報を取得
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("id, display_name")
+            .eq("id", newReaction.user_id)
+            .single();
+
+          const updateReactions = (reactions: ReactionSummary[]): ReactionSummary[] => {
+            const existing = reactions.find((r) => r.emoji === newReaction.emoji);
+            if (existing) {
+              return reactions.map((r) =>
+                r.emoji === newReaction.emoji
+                  ? {
+                      ...r,
+                      count: r.count + 1,
+                      users: [...r.users, { id: newReaction.user_id, display_name: profile?.display_name || null }],
+                    }
+                  : r
+              );
+            } else {
+              return [
+                ...reactions,
+                {
+                  emoji: newReaction.emoji,
+                  count: 1,
+                  users: [{ id: newReaction.user_id, display_name: profile?.display_name || null }],
+                  hasReacted: false,
+                },
+              ];
+            }
+          };
+
+          if (newReaction.message_id === threadId) {
+            setThread((prev) =>
+              prev ? { ...prev, reactions: updateReactions(prev.reactions || []) } : null
+            );
+          } else {
+            setReplies((prev) =>
+              prev.map((r) =>
+                r.id === newReaction.message_id
+                  ? { ...r, reactions: updateReactions(r.reactions || []) }
+                  : r
+              )
+            );
+          }
+        }
+      )
+      // リアクションのDELETE（他ユーザーのリアクション削除を反映）
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "chat_message_reactions",
+        },
+        (payload) => {
+          const deletedReaction = payload.old as {
+            id: string;
+            message_id: string;
+            user_id: string;
+            emoji: string;
+          };
+
+          // 自分のリアクションはoptimisticで処理済みなのでスキップ
+          if (deletedReaction.user_id === currentUserId) {
+            return;
+          }
+
+          // このスレッドのメッセージでない場合はスキップ
+          if (!messageIdsRef.current.has(deletedReaction.message_id)) {
+            return;
+          }
+
+          const updateReactions = (reactions: ReactionSummary[]): ReactionSummary[] => {
+            return reactions
+              .map((r) => {
+                if (r.emoji !== deletedReaction.emoji) return r;
+                const newCount = r.count - 1;
+                if (newCount <= 0) return null;
+                return {
+                  ...r,
+                  count: newCount,
+                  users: r.users.filter((u) => u.id !== deletedReaction.user_id),
+                };
+              })
+              .filter((r): r is ReactionSummary => r !== null);
+          };
+
+          if (deletedReaction.message_id === threadId) {
+            setThread((prev) =>
+              prev ? { ...prev, reactions: updateReactions(prev.reactions || []) } : null
+            );
+          } else {
+            setReplies((prev) =>
+              prev.map((r) =>
+                r.id === deletedReaction.message_id
+                  ? { ...r, reactions: updateReactions(r.reactions || []) }
+                  : r
+              )
+            );
+          }
+        }
+      )
+      // 添付ファイルのINSERT（他ユーザーの添付も反映）
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chat_attachments",
+        },
+        (payload) => {
+          const newAttachment = payload.new as ChatAttachment;
+
+          // このスレッドのメッセージでない場合はスキップ
+          if (!messageIdsRef.current.has(newAttachment.message_id)) {
+            return;
+          }
+
+          if (newAttachment.message_id === threadId) {
+            setThread((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    attachments: [...(prev.attachments || []), newAttachment],
+                  }
+                : null
+            );
+          } else {
+            setReplies((prev) =>
+              prev.map((r) =>
+                r.id === newAttachment.message_id
+                  ? { ...r, attachments: [...(r.attachments || []), newAttachment] }
+                  : r
+              )
+            );
+          }
         }
       )
       .subscribe();
@@ -227,7 +430,7 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [threadId]);
+  }, [threadId, currentUserId]);
 
   // 新しいメッセージが追加されたらスクロール
   useEffect(() => {
@@ -236,11 +439,18 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
 
   const handleSubmit = async () => {
     // useRefで同期的に二重送信を防止
-    if (!replyBody.trim() || isSubmittingRef.current) return;
+    if (isSubmittingRef.current) return;
+
+    // コンテンツ（テキストまたは画像）があるかチェック
+    const hasContent = replyEditorRef.current?.hasContent() ?? false;
+    if (!hasContent) return;
 
     isSubmittingRef.current = true;
     setIsSubmitting(true);
-    const result = await createReply(threadId, replyBody.trim());
+
+    // HTMLを取得して送信（画像のみの場合も空の<p>タグなどを含むHTMLが取得される）
+    const html = replyEditorRef.current?.getHTML() || "";
+    const result = await createReply(threadId, html);
 
     if (result.success && result.message) {
       // 添付ファイルをアップロード
@@ -257,6 +467,7 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
       // Realtimeで追加されるため、ここでは追加しない
       setReplyBody("");
       setSelectedFiles([]);
+      replyEditorRef.current?.clear();
     } else {
       console.error("Failed to create reply:", result.error);
     }
@@ -264,6 +475,24 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
     setIsSubmitting(false);
     isSubmittingRef.current = false;
   };
+
+  // 画像アップロードハンドラー（インライン画像用）
+  const handleImageUpload = useCallback(async (file: File): Promise<ImageUploadResult | null> => {
+    if (!channelId) return null;
+
+    const result = await uploadInlineImage(channelId, threadId, file);
+
+    if (result.success && result.attachmentId && result.objectPath && result.previewUrl) {
+      return {
+        attachmentId: result.attachmentId,
+        objectPath: result.objectPath,
+        previewUrl: result.previewUrl,
+      };
+    }
+
+    console.error("Failed to upload image:", result.error);
+    return null;
+  }, [channelId, threadId]);
 
   // リアクション変更ハンドラ
   const handleReactionChange = (messageId: string, newReactions: ReactionSummary[]) => {
@@ -274,6 +503,63 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
         prev.map((r) => (r.id === messageId ? { ...r, reactions: newReactions } : r))
       );
     }
+  };
+
+  // スレッドヘッダーの編集ハンドラ
+  const handleHeaderEdit = () => {
+    setIsHeaderMenuOpen(false);
+    if (thread) {
+      setEditThreadBody(thread.body);
+      setIsHeaderEditDialogOpen(true);
+    }
+  };
+
+  const handleHeaderSaveEdit = async () => {
+    if (!editThreadBody.trim() || isEditingThread) return;
+
+    setIsEditingThread(true);
+    const result = await updateMessage(threadId, editThreadBody.trim());
+
+    if (result.success && result.message) {
+      setThread(result.message);
+      setIsHeaderEditDialogOpen(false);
+    } else {
+      console.error("Failed to update thread:", result.error);
+    }
+
+    setIsEditingThread(false);
+  };
+
+  // スレッドヘッダーの削除ハンドラ
+  const handleHeaderDeleteClick = () => {
+    setIsHeaderMenuOpen(false);
+    setIsHeaderDeleteDialogOpen(true);
+  };
+
+  const handleHeaderConfirmDelete = async () => {
+    setIsEditingThread(true);
+    const result = await deleteMessage(threadId);
+
+    if (result.success) {
+      setThread((prev) => prev ? { ...prev, deleted_at: new Date().toISOString() } : null);
+      setIsHeaderDeleteDialogOpen(false);
+    } else {
+      console.error("Failed to delete thread:", result.error);
+    }
+
+    setIsEditingThread(false);
+  };
+
+  // スレッド所有者かどうか
+  const isThreadOwner = thread?.created_by === currentUserId;
+
+  // HTMLタグを除去してプレーンテキストを取得
+  const stripHtml = (html: string) => {
+    if (typeof document !== "undefined") {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      return doc.body.textContent || "";
+    }
+    return html.replace(/<[^>]*>/g, "");
   };
 
   if (isLoading) {
@@ -298,12 +584,121 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
   return (
     <div className="flex flex-col h-full">
       {/* ヘッダー */}
-      <div className="flex items-center justify-between p-4 border-b">
-        <h2 className="font-semibold">スレッド</h2>
-        <Button variant="ghost" size="icon" onClick={onClose}>
-          <X className="h-4 w-4" />
-        </Button>
+      <div className="flex items-center justify-between p-4 border-b bg-muted/30">
+        <div className="flex-1 min-w-0 mr-2">
+          <h2 className="font-semibold text-xs text-muted-foreground">スレッド</h2>
+          {thread && (
+            <p className="text-sm font-medium truncate mt-0.5">
+              {stripHtml(thread.body) || "（本文なし）"}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {/* スレッド所有者のみ編集/削除メニューを表示 */}
+          {isThreadOwner && thread && !thread.deleted_at && (
+            <Popover open={isHeaderMenuOpen} onOpenChange={setIsHeaderMenuOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-32 p-1" align="end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-start gap-2"
+                  onClick={handleHeaderEdit}
+                  data-testid="thread-header-edit"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  編集
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-start gap-2 text-destructive hover:text-destructive"
+                  onClick={handleHeaderDeleteClick}
+                  data-testid="thread-header-delete"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  削除
+                </Button>
+              </PopoverContent>
+            </Popover>
+          )}
+          <Button variant="ghost" size="icon" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
+
+      {/* スレッド編集ダイアログ */}
+      <Dialog open={isHeaderEditDialogOpen} onOpenChange={setIsHeaderEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>スレッドを編集</DialogTitle>
+            <DialogDescription>
+              スレッドの内容を編集します。
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={editThreadBody}
+            onChange={(e) => setEditThreadBody(e.target.value)}
+            placeholder="メッセージを入力..."
+            className="min-h-[100px]"
+            disabled={isEditingThread}
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsHeaderEditDialogOpen(false)}
+              disabled={isEditingThread}
+            >
+              キャンセル
+            </Button>
+            <Button
+              onClick={handleHeaderSaveEdit}
+              disabled={!editThreadBody.trim() || isEditingThread}
+            >
+              {isEditingThread ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : null}
+              保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* スレッド削除確認ダイアログ */}
+      <Dialog open={isHeaderDeleteDialogOpen} onOpenChange={setIsHeaderDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>スレッドを削除</DialogTitle>
+            <DialogDescription>
+              このスレッドを削除しますか？この操作は取り消せません。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsHeaderDeleteDialogOpen(false)}
+              disabled={isEditingThread}
+            >
+              キャンセル
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleHeaderConfirmDelete}
+              disabled={isEditingThread}
+            >
+              {isEditingThread ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : null}
+              削除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* メッセージ一覧 */}
       <div className="flex-1 overflow-y-auto p-4">
@@ -370,25 +765,25 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
       {/* 返信入力 */}
       <div className="p-4 border-t bg-muted/20">
         <div className="space-y-2">
-          <RichTextEditor
+          <WysiwygEditor
+            ref={replyEditorRef}
             value={replyBody}
             onChange={setReplyBody}
             onSubmit={handleSubmit}
             placeholder="返信を入力..."
             disabled={isSubmitting}
             isSubmitting={isSubmitting}
-            users={users}
             minHeight={60}
             maxHeight={200}
-            resizable={true}
             showToolbar={true}
-            textareaRef={replyTextareaRef}
+            testId="reply-editor"
+            onImageUpload={handleImageUpload}
           />
           <FileUpload
             files={selectedFiles}
             onFilesChange={setSelectedFiles}
             disabled={isSubmitting}
-            textareaRef={replyTextareaRef}
+            attachButtonTestId="reply-attach-button"
           />
         </div>
       </div>

@@ -12,9 +12,10 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
-import { createThread, uploadAttachment, markAllThreadsAsRead } from "@/lib/actions/chat";
+import { useCallback } from "react";
+import { createThread, uploadAttachment, markAllThreadsAsRead, uploadInlineImage } from "@/lib/actions/chat";
 import { FileUpload } from "./FileUpload";
-import { RichTextEditor } from "./RichTextEditor";
+import { WysiwygEditor, WysiwygEditorRef, ImageUploadResult } from "./WysiwygEditor";
 import type { ChatThreadWithDetails, ChatTag, Profile } from "@/types/database";
 
 interface ThreadListProps {
@@ -56,16 +57,23 @@ export function ThreadList({
   const [isTagPopoverOpen, setIsTagPopoverOpen] = useState(false);
   const [isMarkingAllAsRead, setIsMarkingAllAsRead] = useState(false);
   const isSubmittingRef = useRef(false);
-  const newThreadTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<WysiwygEditorRef>(null);
 
   const handleSubmit = async () => {
-    // テキストまたは画像のどちらかが必要
-    const hasContent = newThreadBody.trim() || selectedFiles.length > 0;
-    if (!channelId || !hasContent || isSubmittingRef.current) return;
+    if (!channelId || isSubmittingRef.current) return;
+
+    // エディタにコンテンツ（テキストまたは画像）があるかチェック
+    const editorHasContent = editorRef.current?.hasContent() ?? false;
+    // 添付ファイルも含めて判定
+    const hasContent = editorHasContent || selectedFiles.length > 0;
+    if (!hasContent) return;
 
     isSubmittingRef.current = true;
     setIsSubmitting(true);
-    const result = await createThread(channelId, newThreadBody.trim());
+
+    // HTMLを取得して送信
+    const html = editorRef.current?.getHTML() || "";
+    const result = await createThread(channelId, html);
 
     if (result.success && result.thread) {
       // 添付ファイルをアップロード
@@ -82,6 +90,7 @@ export function ThreadList({
       onNewThread(result.thread);
       setNewThreadBody("");
       setSelectedFiles([]);
+      editorRef.current?.clear();
     } else {
       console.error("Failed to create thread:", result.error);
     }
@@ -127,6 +136,34 @@ export function ThreadList({
 
   const getDisplayName = (thread: ChatThreadWithDetails) => {
     return thread.profiles?.display_name || thread.profiles?.email?.split("@")[0] || "不明";
+  };
+
+  // 画像アップロードハンドラー（インライン画像用）
+  const handleImageUpload = useCallback(async (file: File): Promise<ImageUploadResult | null> => {
+    if (!channelId) return null;
+
+    const result = await uploadInlineImage(channelId, "new", file);
+
+    if (result.success && result.attachmentId && result.objectPath && result.previewUrl) {
+      return {
+        attachmentId: result.attachmentId,
+        objectPath: result.objectPath,
+        previewUrl: result.previewUrl,
+      };
+    }
+
+    console.error("Failed to upload image:", result.error);
+    return null;
+  }, [channelId]);
+
+  // HTMLタグを除去してプレーンテキストを取得
+  const stripHtml = (html: string) => {
+    if (typeof document !== "undefined") {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      return doc.body.textContent || "";
+    }
+    // SSRフォールバック: 単純な正規表現でタグを除去
+    return html.replace(/<[^>]*>/g, "");
   };
 
   // タグフィルタ用のタグ一覧（検索でフィルタ）
@@ -278,6 +315,8 @@ export function ThreadList({
               variant="default"
               className="text-xs pr-1 cursor-pointer"
               onClick={() => onTagFilterChange(selectedTagIds.filter((id) => id !== tag.id))}
+              data-testid="tag-chip"
+              data-tag-id={tag.id}
             >
               <Tag className="h-2.5 w-2.5 mr-1" />
               {tag.name}
@@ -285,7 +324,7 @@ export function ThreadList({
             </Badge>
           ))}
           {hiddenTagCount > 0 && (
-            <Badge variant="secondary" className="text-xs">
+            <Badge variant="secondary" className="text-xs" data-testid="tag-overflow">
               +{hiddenTagCount}
             </Badge>
           )}
@@ -296,25 +335,25 @@ export function ThreadList({
       {channelId && (
         <div className="p-3 border-b bg-muted/20">
           <div className="space-y-2">
-            <RichTextEditor
+            <WysiwygEditor
+              ref={editorRef}
               value={newThreadBody}
               onChange={setNewThreadBody}
               onSubmit={handleSubmit}
               placeholder="新しいスレッドを作成..."
               disabled={isSubmitting}
               isSubmitting={isSubmitting}
-              users={users}
               minHeight={60}
               maxHeight={200}
-              resizable={true}
-              showToolbar={true}
-              textareaRef={newThreadTextareaRef}
+              showToolbar={false}
+              testId="thread-editor"
+              onImageUpload={handleImageUpload}
             />
             <FileUpload
               files={selectedFiles}
               onFilesChange={setSelectedFiles}
               disabled={isSubmitting}
-              textareaRef={newThreadTextareaRef}
+              attachButtonTestId="thread-attach-button"
             />
           </div>
         </div>
@@ -350,7 +389,8 @@ export function ThreadList({
                         ? "bg-blue-50 dark:bg-blue-950/30 hover:bg-blue-100 dark:hover:bg-blue-950/50"
                         : "hover:bg-muted/50"
                     )}
-                    data-testid={`thread-item-${thread.id}`}
+                    data-testid="thread-item"
+                    data-thread-id={thread.id}
                     data-unread={isUnread}
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -359,7 +399,7 @@ export function ThreadList({
                         thread.deleted_at && "text-muted-foreground italic",
                         isUnread && !thread.deleted_at && "font-semibold"
                       )}>
-                        {thread.deleted_at ? "[削除済み]" : thread.body}
+                        {thread.deleted_at ? "[削除済み]" : stripHtml(thread.body)}
                       </p>
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <span className="text-xs text-muted-foreground whitespace-nowrap">

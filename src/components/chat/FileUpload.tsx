@@ -33,9 +33,11 @@ interface FileUploadProps {
   onFilesChange: (files: File[]) => void;
   disabled?: boolean;
   textareaRef?: React.RefObject<HTMLTextAreaElement | null>;
+  /** 添付ボタンのdata-testid */
+  attachButtonTestId?: string;
 }
 
-export function FileUpload({ files, onFilesChange, disabled, textareaRef }: FileUploadProps) {
+export function FileUpload({ files, onFilesChange, disabled, textareaRef, attachButtonTestId }: FileUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [filesWithPreview, setFilesWithPreview] = useState<FileWithPreview[]>([]);
@@ -213,6 +215,7 @@ export function FileUpload({ files, onFilesChange, disabled, textareaRef }: File
           onClick={() => inputRef.current?.click()}
           disabled={disabled || files.length >= MAX_ATTACHMENTS}
           className="h-8 px-2"
+          data-testid={attachButtonTestId}
         >
           <Paperclip className="h-4 w-4 mr-1" />
           添付
