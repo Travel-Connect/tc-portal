@@ -345,7 +345,7 @@ export function ThreadList({
               isSubmitting={isSubmitting}
               minHeight={60}
               maxHeight={200}
-              showToolbar={true}
+              showToolbar={false}
               testId="thread-editor"
               onImageUpload={handleImageUpload}
             />

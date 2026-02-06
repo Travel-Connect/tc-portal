@@ -226,6 +226,37 @@ const isHelper = tool.execution_mode === "helper";
 
 **教訓**: 実行フローの判定は `execution_mode` を正とし、`tool_type` は表示ラベルや分類にのみ使用する
 
+## メッセージ/チャット機能の仕様
+
+### エディタ設定
+| 場所 | showToolbar | 用途 |
+|------|-------------|------|
+| ThreadList（スレッド作成） | `false` | シンプルな入力欄 |
+| ThreadDetail（返信） | `true` | フル機能ツールバー |
+
+**注意**: スレッド作成は `showToolbar={false}` でシンプルに保つこと。ツールバーが必要な場合は返信エディタを使用。
+
+### 送信キーバインド
+- **Ctrl+Enter** (Windows) / **Cmd+Enter** (Mac): メッセージ送信
+- **Enter**: 改行 / リスト項目追加
+
+### スレッドヘッダーの編集・削除機能
+- 設定ボタン（歯車アイコン）は **スレッド作成者のみ** に表示
+- 表示条件: `isThreadOwner && thread && !thread.deleted_at`
+- `isThreadOwner = thread.created_by === currentUserId`
+
+**トラブルシューティング**: 編集・削除ボタンが表示されない場合
+1. ログイン状態を確認（currentUserIdがnullでないか）
+2. 自分が作成したスレッドか確認（他人のスレッドでは表示されない）
+3. スレッドが削除済みでないか確認
+
+### 再発防止チェックリスト
+チャット機能を修正する際は以下を確認：
+- [ ] ThreadList の `showToolbar={false}` が維持されているか
+- [ ] ThreadDetail の `showToolbar={true}` が維持されているか
+- [ ] E2Eテストが `Control+Enter` で送信しているか（`Enter` ではない）
+- [ ] スレッドヘッダーの編集・削除ボタンの条件が正しいか
+
 ## E2Eテスト
 
 ### セットアップ
