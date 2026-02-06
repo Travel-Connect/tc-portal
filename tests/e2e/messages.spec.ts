@@ -16,6 +16,14 @@ async function fillTiptapEditor(editor: Locator, text: string) {
 }
 
 /**
+ * TipTapエディタでCtrl+Enterを押して送信するヘルパー関数
+ */
+async function submitTiptapEditor(editor: Locator) {
+  const tiptap = editor.locator(".tiptap");
+  await tiptap.press("Control+Enter");
+}
+
+/**
  * シンプルなテキストエリアにテキストを入力するヘルパー関数
  * @deprecated WysiwygEditorに統一されたためfillTiptapEditorを使用してください
  */
@@ -68,9 +76,8 @@ test.describe("Messages Page", () => {
     const testMessage = `テストスレッド ${Date.now()}`;
     await fillSimpleEditor(editor, testMessage);
 
-    // 送信ボタンをクリック
-    const sendButton = editor.locator("button").filter({ has: page.locator("svg") }).last();
-    await sendButton.click();
+    // Ctrl+Enterで送信
+    await submitTiptapEditor(editor);
 
     // スレッド一覧に投稿が表示されるまで待つ
     await expect(page.getByText(testMessage)).toBeVisible({ timeout: 10000 });
@@ -83,8 +90,8 @@ test.describe("Messages Page", () => {
     const threadEditor = page.getByTestId("thread-editor");
     const testMessage = `返信テスト ${Date.now()}`;
     await fillTiptapEditor(threadEditor, testMessage);
-    // TipTapエディタでEnterで送信
-    await threadEditor.locator(".tiptap").press("Enter");
+    // Ctrl+Enterで送信
+    await submitTiptapEditor(threadEditor);
 
     // スレッドが作成されるのを待つ（リロードして確認）
     await page.waitForTimeout(2000);
@@ -105,7 +112,8 @@ test.describe("Messages Page", () => {
     // 返信を入力して送信（TipTapエディタ）
     const replyMessage = `返信メッセージ ${Date.now()}`;
     await fillTiptapEditor(replyEditor, replyMessage);
-    await replyEditor.locator(".tiptap").press("Enter");
+    // Ctrl+Enterで送信
+    await submitTiptapEditor(replyEditor);
 
     // 返信が表示される
     await expect(page.getByText(replyMessage)).toBeVisible({ timeout: 10000 });
@@ -162,7 +170,7 @@ test.describe("Messages Page", () => {
     const editor = page.getByTestId("thread-editor");
     const uniqueKeyword = `検索テスト_${Date.now()}`;
     await fillSimpleEditor(editor, uniqueKeyword);
-    await editor.locator(".tiptap").press("Enter");
+    await submitTiptapEditor(editor);
 
     // スレッドが作成されるのを待つ
     await expect(page.getByText(uniqueKeyword)).toBeVisible({ timeout: 10000 });
@@ -173,7 +181,7 @@ test.describe("Messages Page", () => {
     // 別のスレッドを作成
     const otherMessage = `別のスレッド_${Date.now()}`;
     await fillSimpleEditor(editor, otherMessage);
-    await editor.locator(".tiptap").press("Enter");
+    await submitTiptapEditor(editor);
     await expect(page.getByText(otherMessage)).toBeVisible({ timeout: 10000 });
 
     // 検索で絞り込み
@@ -198,7 +206,7 @@ test.describe("Messages Page", () => {
     const editor = page.getByTestId("thread-editor");
     const testMessage = `タグテスト ${Date.now()}`;
     await fillSimpleEditor(editor, testMessage);
-    await editor.locator(".tiptap").press("Enter");
+    await submitTiptapEditor(editor);
 
     // スレッドが作成されるのを待つ
     await page.waitForTimeout(2000);
@@ -245,7 +253,7 @@ test.describe("Messages Page", () => {
     const editor = page.getByTestId("thread-editor");
     const testMessage = `フィルタテスト ${Date.now()}`;
     await fillSimpleEditor(editor, testMessage);
-    await editor.locator(".tiptap").press("Enter");
+    await submitTiptapEditor(editor);
 
     // optimistic updateにより即座にスレッドが表示される
     const threadItem = page.getByTestId("thread-item").filter({ hasText: testMessage });
@@ -321,7 +329,7 @@ test.describe("Messages Page", () => {
     const editor = page.getByTestId("thread-editor");
     const testMessage = `既読テスト ${Date.now()}`;
     await fillSimpleEditor(editor, testMessage);
-    await editor.locator(".tiptap").press("Enter");
+    await submitTiptapEditor(editor);
 
     // スレッドが作成されるのを待つ
     await page.waitForTimeout(2000);
@@ -381,7 +389,7 @@ test.describe("Messages Page", () => {
     const threadEditor = page.getByTestId("thread-editor");
     const testMessage = `編集テスト ${Date.now()}`;
     await fillSimpleEditor(threadEditor, testMessage);
-    await threadEditor.locator(".tiptap").press("Enter");
+    await submitTiptapEditor(threadEditor);
 
     // optimistic updateにより即座にスレッドが表示される
     const threadItem = page.getByTestId("thread-item").filter({ hasText: testMessage });
@@ -395,7 +403,7 @@ test.describe("Messages Page", () => {
     // 返信を投稿（TipTapエディタ）
     const originalReply = `元の返信 ${Date.now()}`;
     await fillTiptapEditor(replyEditor, originalReply);
-    await replyEditor.locator(".tiptap").press("Enter");
+    await submitTiptapEditor(replyEditor);
 
     // 返信が表示されるのを待つ
     await expect(page.getByText(originalReply)).toBeVisible({ timeout: 10000 });
@@ -440,7 +448,7 @@ test.describe("Messages Page", () => {
     const threadEditor = page.getByTestId("thread-editor");
     const testMessage = `削除テスト ${Date.now()}`;
     await fillSimpleEditor(threadEditor, testMessage);
-    await threadEditor.locator(".tiptap").press("Enter");
+    await submitTiptapEditor(threadEditor);
 
     // スレッドがoptimistic updateで即座に表示される
     const threadItem = page.getByTestId("thread-item").filter({ hasText: testMessage });
@@ -454,7 +462,7 @@ test.describe("Messages Page", () => {
     // 返信を投稿（TipTapエディタ）
     const replyToDelete = `削除する返信 ${Date.now()}`;
     await fillTiptapEditor(replyEditor, replyToDelete);
-    await replyEditor.locator(".tiptap").press("Enter");
+    await submitTiptapEditor(replyEditor);
 
     // 返信が表示されるのを待つ
     await expect(page.getByText(replyToDelete)).toBeVisible({ timeout: 10000 });
@@ -496,7 +504,7 @@ test.describe("Messages Page", () => {
     const threadEditor = page.getByTestId("thread-editor");
     const testMessage = `添付テスト ${Date.now()}`;
     await fillSimpleEditor(threadEditor, testMessage);
-    await threadEditor.locator(".tiptap").press("Enter");
+    await submitTiptapEditor(threadEditor);
 
     // スレッドがoptimistic updateで即座に表示される
     const threadItem = page.getByTestId("thread-item").filter({ hasText: testMessage });
@@ -512,5 +520,126 @@ test.describe("Messages Page", () => {
 
     // 返信エリア近くのファイル数表示が存在する（最後の"0/5"は返信エリア）
     await expect(page.getByText(/0\/5/).last()).toBeVisible();
+  });
+
+  test("スレッド作成者は編集・削除ボタンが表示される", async ({ page }) => {
+    await page.goto("/messages");
+
+    // スレッドを作成
+    const threadEditor = page.getByTestId("thread-editor");
+    const testMessage = `ヘッダー編集テスト ${Date.now()}`;
+    await fillSimpleEditor(threadEditor, testMessage);
+    await submitTiptapEditor(threadEditor);
+
+    // スレッドがoptimistic updateで即座に表示される
+    const threadItem = page.getByTestId("thread-item").filter({ hasText: testMessage });
+    await expect(threadItem).toBeVisible({ timeout: 10000 });
+    await threadItem.click();
+
+    // 返信入力欄が表示される（詳細パネルが開いた証拠）
+    await expect(page.getByTestId("reply-editor")).toBeVisible({ timeout: 10000 });
+
+    // スレッドヘッダーに設定ボタン（歯車アイコン）が表示される
+    // スレッド作成者なので編集・削除メニューが表示されるはず
+    const settingsButton = page.locator("button").filter({ has: page.locator("svg.lucide-settings") });
+    await expect(settingsButton).toBeVisible({ timeout: 5000 });
+
+    // 設定ボタンをクリックしてPopoverを開く
+    await settingsButton.click();
+    await page.waitForTimeout(300);
+
+    // 編集ボタンが表示される
+    const editButton = page.getByTestId("thread-header-edit");
+    await expect(editButton).toBeVisible({ timeout: 5000 });
+
+    // 削除ボタンが表示される
+    const deleteButton = page.getByTestId("thread-header-delete");
+    await expect(deleteButton).toBeVisible({ timeout: 5000 });
+  });
+
+  test("スレッドを編集できる", async ({ page }) => {
+    await page.goto("/messages");
+
+    // スレッドを作成
+    const threadEditor = page.getByTestId("thread-editor");
+    const originalMessage = `編集前のスレッド ${Date.now()}`;
+    await fillSimpleEditor(threadEditor, originalMessage);
+    await submitTiptapEditor(threadEditor);
+
+    // スレッドが表示される
+    const threadItem = page.getByTestId("thread-item").filter({ hasText: originalMessage });
+    await expect(threadItem).toBeVisible({ timeout: 10000 });
+    await threadItem.click();
+
+    // 詳細パネルが開く
+    await expect(page.getByTestId("reply-editor")).toBeVisible({ timeout: 10000 });
+
+    // 設定ボタンをクリック
+    const settingsButton = page.locator("button").filter({ has: page.locator("svg.lucide-settings") });
+    await expect(settingsButton).toBeVisible({ timeout: 5000 });
+    await settingsButton.click();
+    await page.waitForTimeout(300);
+
+    // 編集ボタンをクリック
+    const editButton = page.getByTestId("thread-header-edit");
+    await editButton.click();
+
+    // 編集ダイアログが表示される
+    await expect(page.getByRole("heading", { name: "スレッドを編集" })).toBeVisible({ timeout: 5000 });
+
+    // テキストエリアに新しい内容を入力
+    const editedMessage = `編集後のスレッド ${Date.now()}`;
+    const textarea = page.locator("textarea");
+    await textarea.clear();
+    await textarea.fill(editedMessage);
+
+    // 保存ボタンをクリック
+    await page.getByRole("button", { name: /保存/ }).click();
+
+    // ダイアログが閉じる
+    await expect(page.getByRole("heading", { name: "スレッドを編集" })).not.toBeVisible({ timeout: 5000 });
+
+    // ヘッダーに編集後の内容が表示される
+    await expect(page.getByText(editedMessage).first()).toBeVisible({ timeout: 10000 });
+  });
+
+  test("スレッドを削除できる", async ({ page }) => {
+    await page.goto("/messages");
+
+    // スレッドを作成
+    const threadEditor = page.getByTestId("thread-editor");
+    const testMessage = `削除するスレッド ${Date.now()}`;
+    await fillSimpleEditor(threadEditor, testMessage);
+    await submitTiptapEditor(threadEditor);
+
+    // スレッドが表示される
+    const threadItem = page.getByTestId("thread-item").filter({ hasText: testMessage });
+    await expect(threadItem).toBeVisible({ timeout: 10000 });
+    await threadItem.click();
+
+    // 詳細パネルが開く
+    await expect(page.getByTestId("reply-editor")).toBeVisible({ timeout: 10000 });
+
+    // 設定ボタンをクリック
+    const settingsButton = page.locator("button").filter({ has: page.locator("svg.lucide-settings") });
+    await expect(settingsButton).toBeVisible({ timeout: 5000 });
+    await settingsButton.click();
+    await page.waitForTimeout(300);
+
+    // 削除ボタンをクリック
+    const deleteButton = page.getByTestId("thread-header-delete");
+    await deleteButton.click();
+
+    // 確認ダイアログが表示される
+    await expect(page.getByRole("heading", { name: "スレッドを削除" })).toBeVisible({ timeout: 5000 });
+
+    // 削除を確定
+    await page.getByRole("button", { name: "削除", exact: true }).last().click();
+
+    // ダイアログが閉じる
+    await expect(page.getByRole("heading", { name: "スレッドを削除" })).not.toBeVisible({ timeout: 5000 });
+
+    // 「削除済み」表示になる
+    await expect(page.getByText("[削除済み]")).toBeVisible({ timeout: 10000 });
   });
 });

@@ -22,7 +22,7 @@ async function createAndOpenThread(page: import("@playwright/test").Page, testId
   const tiptap = threadEditor.locator(".tiptap");
   await tiptap.click();
   await tiptap.fill(`テストスレッド${testId}`);
-  await tiptap.press("Enter");
+  await tiptap.press("Control+Enter");
 
   // スレッドが作成されるまで待つ
   const threadItem = page.getByTestId("thread-item").filter({ hasText: `${testId}` });
@@ -56,7 +56,7 @@ test.describe("WYSIWYG Formatting", () => {
     await tiptap.press("Control+b");
 
     // 送信
-    await tiptap.press("Enter");
+    await tiptap.press("Control+Enter");
 
     // 投稿が表示されるまで待つ
     await expect(page.getByText(`テスト太字`)).toBeVisible({ timeout: 10000 });
@@ -83,7 +83,7 @@ test.describe("WYSIWYG Formatting", () => {
     await tiptap.press("Control+i");
 
     // 送信
-    await tiptap.press("Enter");
+    await tiptap.press("Control+Enter");
 
     // 投稿が表示されるまで待つ
     await expect(page.getByText(`テスト斜体`)).toBeVisible({ timeout: 10000 });
@@ -110,7 +110,7 @@ test.describe("WYSIWYG Formatting", () => {
     await tiptap.press("Control+u");
 
     // 送信
-    await tiptap.press("Enter");
+    await tiptap.press("Control+Enter");
 
     // 投稿が表示されるまで待つ
     await expect(page.getByText(`テスト下線`)).toBeVisible({ timeout: 10000 });
@@ -137,7 +137,7 @@ test.describe("WYSIWYG Formatting", () => {
     await listButton.click();
 
     // 送信
-    await tiptap.press("Enter");
+    await tiptap.press("Control+Enter");
 
     // 投稿が表示されるまで待つ
     await expect(page.getByText(`テストリスト${testId}`)).toBeVisible({ timeout: 10000 });
@@ -164,7 +164,7 @@ test.describe("WYSIWYG Formatting", () => {
     await quoteButton.click();
 
     // 送信
-    await tiptap.press("Enter");
+    await tiptap.press("Control+Enter");
 
     // 投稿が表示されるまで待つ
     await expect(page.getByText(`テスト引用${testId}`)).toBeVisible({ timeout: 10000 });
@@ -183,7 +183,7 @@ test.describe("WYSIWYG Formatting", () => {
 
     // scriptタグを含むテキストを入力
     await fillTiptapEditor(replyEditor, `XSSテスト${testId} <script>alert('xss')</script> 安全なテキスト`);
-    await replyEditor.locator(".tiptap").press("Enter");
+    await replyEditor.locator(".tiptap").press("Control+Enter");
 
     // 投稿が表示されるまで待つ
     await expect(page.getByText(`XSSテスト${testId}`)).toBeVisible({ timeout: 10000 });
@@ -215,7 +215,7 @@ test.describe("WYSIWYG Formatting", () => {
     // 全選択して太字を適用
     await tiptap.press("Control+a");
     await tiptap.press("Control+b");
-    await tiptap.press("Enter");
+    await tiptap.press("Control+Enter");
 
     // 投稿が表示されるまで待つ
     await expect(page.getByText(`${testId}`)).toBeVisible({ timeout: 10000 });

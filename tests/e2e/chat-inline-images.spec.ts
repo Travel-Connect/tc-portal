@@ -47,7 +47,7 @@ test.describe("Chat Inline Images", () => {
     await fillTiptapEditor(editor, testMessage);
 
     // Enterで送信
-    await editor.locator(".tiptap").press("Enter");
+    await editor.locator(".tiptap").press("Control+Enter");
 
     // スレッド一覧に表示される（HTML形式で保存されるため、pタグ内のテキストを検索）
     await expect(page.getByText(testMessage)).toBeVisible({ timeout: 10000 });
@@ -58,7 +58,7 @@ test.describe("Chat Inline Images", () => {
     const threadEditor = page.getByTestId("thread-editor");
     const testMessage = `返信テスト ${Date.now()}`;
     await fillTiptapEditor(threadEditor, testMessage);
-    await threadEditor.locator(".tiptap").press("Enter");
+    await threadEditor.locator(".tiptap").press("Control+Enter");
 
     // スレッドが作成されるのを待つ
     await page.waitForTimeout(2000);
@@ -83,7 +83,7 @@ test.describe("Chat Inline Images", () => {
     const editor = page.getByTestId("thread-editor");
     const testMessage = `HTMLテスト ${Date.now()}`;
     await fillTiptapEditor(editor, testMessage);
-    await editor.locator(".tiptap").press("Enter");
+    await editor.locator(".tiptap").press("Control+Enter");
 
     // スレッド一覧に表示される
     await expect(page.getByText(testMessage)).toBeVisible({ timeout: 10000 });
@@ -103,7 +103,7 @@ test.describe("Chat Inline Images", () => {
     const threadEditor = page.getByTestId("thread-editor");
     const testMessage = `画像ボタンテスト ${Date.now()}`;
     await fillTiptapEditor(threadEditor, testMessage);
-    await threadEditor.locator(".tiptap").press("Enter");
+    await threadEditor.locator(".tiptap").press("Control+Enter");
 
     await page.waitForTimeout(2000);
     await page.reload();
