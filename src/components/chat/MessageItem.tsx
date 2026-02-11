@@ -263,6 +263,8 @@ export function MessageItem({
   return (
     <>
       <div
+        data-testid="message-item"
+        data-message-id={message.id}
         className={cn(
           "flex gap-2 group",
           isOwner ? "flex-row-reverse" : "flex-row",
@@ -344,6 +346,7 @@ export function MessageItem({
                 <>
                   <MarkdownRenderer
                     content={message.body}
+                    format={message.format}
                     className={cn("text-sm", isOwner && "text-primary-foreground [&_a]:text-primary-foreground [&_a]:underline")}
                   />
                   {message.attachments && message.attachments.length > 0 && (
@@ -377,7 +380,7 @@ export function MessageItem({
                 {/* リアクション追加ボタン */}
                 <Popover open={isReactionPickerOpen} onOpenChange={setIsReactionPickerOpen}>
                   <PopoverTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-6 w-6">
+                    <Button variant="ghost" size="icon" className="h-6 w-6" data-testid="reaction-add-button">
                       <Plus className="h-3.5 w-3.5" />
                     </Button>
                   </PopoverTrigger>
@@ -400,7 +403,7 @@ export function MessageItem({
                 {isOwner && (
                   <Popover open={isMenuOpen} onOpenChange={setIsMenuOpen}>
                     <PopoverTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-6 w-6">
+                      <Button variant="ghost" size="icon" className="h-6 w-6" data-testid="message-menu-button">
                         <MoreHorizontal className="h-3.5 w-3.5" />
                       </Button>
                     </PopoverTrigger>
@@ -408,6 +411,7 @@ export function MessageItem({
                       <button
                         onClick={handleEdit}
                         className="w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-muted"
+                        data-testid="message-edit-button"
                       >
                         <Pencil className="h-3.5 w-3.5" />
                         編集
@@ -415,6 +419,7 @@ export function MessageItem({
                       <button
                         onClick={handleDeleteClick}
                         className="w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-muted text-destructive"
+                        data-testid="message-delete-button"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                         削除
@@ -439,6 +444,8 @@ export function MessageItem({
                       ? "bg-primary/20 text-primary border border-primary/30"
                       : "bg-muted hover:bg-muted/80"
                   )}
+                  data-testid="reaction-chip"
+                  data-emoji={reaction.emoji}
                 >
                   <span>{reaction.emoji}</span>
                   <span>{reaction.count}</span>

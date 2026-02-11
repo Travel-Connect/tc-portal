@@ -130,6 +130,7 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
         setThreads(
           (data || []).map((t) => ({
             ...t,
+            format: (t.format as "markdown" | "html") || "markdown",
             reply_count: replyCountMap.get(t.id) || 0,
             is_unread: true, // フォールバック時はすべて未読扱い
           }))
@@ -173,6 +174,7 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
       channel_id: row.channel_id,
       parent_id: row.parent_id,
       body: row.body,
+      format: (row.format as "markdown" | "html") || "markdown", // 既存メッセージはmarkdownがデフォルト
       created_by: row.created_by,
       created_at: row.created_at,
       updated_at: row.updated_at,
