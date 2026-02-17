@@ -28,9 +28,45 @@ import type { ChatMessageWithAuthor, ChatTag, ChatAttachment, Profile, ReactionS
 interface ThreadDetailProps {
   threadId: string;
   onClose: () => void;
+  onThreadDeleted?: () => void;
 }
 
-export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
+/** 日付をローカル日付文字列に変換（YYYY-MM-DD） */
+function toLocalDateKey(dateString: string): string {
+  const d = new Date(dateString);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** 日付ラベルを生成: 今日 / 昨日 / M/D(曜) */
+function formatDateLabel(dateString: string): string {
+  const d = new Date(dateString);
+  const now = new Date();
+
+  const todayKey = toLocalDateKey(now.toISOString());
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayKey = toLocalDateKey(yesterday.toISOString());
+  const dateKey = toLocalDateKey(dateString);
+
+  if (dateKey === todayKey) return "今日";
+  if (dateKey === yesterdayKey) return "昨日";
+
+  const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+  return `${d.getMonth() + 1}/${d.getDate()}(${weekdays[d.getDay()]})`;
+}
+
+/** 日付区切りコンポーネント（LINE風） */
+function DateSeparator({ label }: { label: string }) {
+  return (
+    <div className="flex items-center justify-center my-4">
+      <span className="px-3 py-0.5 text-[11px] text-muted-foreground bg-muted rounded-full">
+        {label}
+      </span>
+    </div>
+  );
+}
+
+export function ThreadDetail({ threadId, onClose, onThreadDeleted }: ThreadDetailProps) {
   const [thread, setThread] = useState<ChatMessageWithAuthor | null>(null);
   const [replies, setReplies] = useState<ChatMessageWithAuthor[]>([]);
   const [tags, setTags] = useState<ChatTag[]>([]);
@@ -245,6 +281,12 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
         async (payload) => {
           const updatedThread = payload.new as ChatMessageWithAuthor;
 
+          // 他ユーザーによる削除 → 自動でスレッドを閉じる
+          if (updatedThread.deleted_at) {
+            onClose();
+            return;
+          }
+
           // プロフィール情報を取得
           const { data: profile } = await supabase
             .from("profiles")
@@ -430,7 +472,7 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [threadId, currentUserId]);
+  }, [threadId, currentUserId, onClose]);
 
   // 新しいメッセージが追加されたらスクロール
   useEffect(() => {
@@ -541,8 +583,9 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
     const result = await deleteMessage(threadId);
 
     if (result.success) {
-      setThread((prev) => prev ? { ...prev, deleted_at: new Date().toISOString() } : null);
       setIsHeaderDeleteDialogOpen(false);
+      // 親に通知して一覧から削除＆詳細を閉じる
+      onThreadDeleted?.();
     } else {
       console.error("Failed to delete thread:", result.error);
     }
@@ -733,29 +776,41 @@ export function ThreadDetail({ threadId, onClose }: ThreadDetailProps) {
             <div className="text-xs text-muted-foreground mb-2">
               {replies.length}件の返信
             </div>
-            {groupedReplies.map(({ message, position }) => (
-              <MessageItem
-                key={message.id}
-                message={message}
-                currentUserId={currentUserId || ""}
-                variant="reply"
-                groupPosition={position}
-                onUpdate={(updatedMessage) => {
-                  setReplies((prev) =>
-                    prev.map((r) => (r.id === updatedMessage.id ? updatedMessage : r))
-                  );
-                }}
-                onDelete={(messageId) => {
-                  // 削除済みに更新（リストからは削除しない）
-                  setReplies((prev) =>
-                    prev.map((r) =>
-                      r.id === messageId ? { ...r, deleted_at: new Date().toISOString() } : r
-                    )
-                  );
-                }}
-                onReactionChange={handleReactionChange}
-              />
-            ))}
+            {groupedReplies.map(({ message, position }, index) => {
+              // 日付区切り: 前のメッセージと日付が変わったら挿入
+              const prevMessage = index > 0 ? groupedReplies[index - 1].message : thread;
+              const prevDateKey = prevMessage ? toLocalDateKey(prevMessage.created_at) : null;
+              const currentDateKey = toLocalDateKey(message.created_at);
+              const showDateSeparator = prevDateKey !== currentDateKey;
+
+              return (
+                <div key={message.id}>
+                  {showDateSeparator && (
+                    <DateSeparator label={formatDateLabel(message.created_at)} />
+                  )}
+                  <MessageItem
+                    message={message}
+                    currentUserId={currentUserId || ""}
+                    variant="reply"
+                    groupPosition={position}
+                    onUpdate={(updatedMessage) => {
+                      setReplies((prev) =>
+                        prev.map((r) => (r.id === updatedMessage.id ? updatedMessage : r))
+                      );
+                    }}
+                    onDelete={(messageId) => {
+                      // 削除済みに更新（リストからは削除しない）
+                      setReplies((prev) =>
+                        prev.map((r) =>
+                          r.id === messageId ? { ...r, deleted_at: new Date().toISOString() } : r
+                        )
+                      );
+                    }}
+                    onReactionChange={handleReactionChange}
+                  />
+                </div>
+              );
+            })}
           </div>
         )}
 

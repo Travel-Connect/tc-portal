@@ -5,8 +5,16 @@
 -- message_id を一時的に NULL にする必要がある。
 -- メッセージ作成後に message_id を更新する。
 
--- message_id の NOT NULL 制約を削除
-ALTER TABLE public.chat_attachments
-  ALTER COLUMN message_id DROP NOT NULL;
+-- message_id の NOT NULL 制約を削除（冪等）
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'chat_attachments' AND column_name = 'message_id'
+      AND is_nullable = 'NO'
+  ) THEN
+    ALTER TABLE public.chat_attachments ALTER COLUMN message_id DROP NOT NULL;
+  END IF;
+END $$;
 
 COMMENT ON COLUMN public.chat_attachments.message_id IS 'メッセージID（インライン画像の場合、アップロード時はNULL、メッセージ作成後に更新）';
