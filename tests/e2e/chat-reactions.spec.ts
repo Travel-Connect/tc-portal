@@ -1,20 +1,40 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, Locator } from "@playwright/test";
+
+/**
+ * TipTapエディタにテキストを入力するヘルパー関数
+ */
+async function fillTiptapEditor(editor: Locator, text: string) {
+  const tiptap = editor.locator(".tiptap");
+  await tiptap.waitFor({ state: "visible" });
+  await tiptap.click();
+  await tiptap.page().waitForTimeout(100);
+  await tiptap.pressSequentially(text, { delay: 10 });
+}
+
+/**
+ * TipTapエディタでCtrl+Enterを押して送信するヘルパー関数
+ */
+async function submitTiptapEditor(editor: Locator) {
+  const tiptap = editor.locator(".tiptap");
+  await tiptap.press("Control+Enter");
+}
 
 test.describe("Chat Bubble UI and Reactions", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/messages");
     // 全体チャンネルを選択
     await page.getByRole("button", { name: "全体" }).click();
-    // チャンネル読み込み待ち
-    await expect(page.getByPlaceholder("新しいスレッドを作成...")).toBeVisible({ timeout: 10000 });
+    // チャンネル読み込み待ち（TipTapエディタが表示されるまで）
+    const threadEditor = page.getByTestId("thread-editor");
+    await expect(threadEditor.locator(".tiptap")).toBeVisible({ timeout: 10000 });
   });
 
   test("吹き出し型メッセージが正しく表示される", async ({ page }) => {
     // 新しいスレッドを作成
-    const textarea = page.getByPlaceholder("新しいスレッドを作成...");
+    const threadEditor = page.getByTestId("thread-editor");
     const testMessage = `吹き出しテスト ${Date.now()}`;
-    await textarea.fill(testMessage);
-    await textarea.press("Control+Enter");
+    await fillTiptapEditor(threadEditor, testMessage);
+    await submitTiptapEditor(threadEditor);
 
     // optimistic updateにより即座にスレッドが表示される
     const threadItem = page.getByTestId("thread-item").filter({ hasText: testMessage });
@@ -22,7 +42,7 @@ test.describe("Chat Bubble UI and Reactions", () => {
     await threadItem.click();
 
     // スレッド詳細が開く
-    await expect(page.getByPlaceholder("返信を入力...")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId("reply-editor")).toBeVisible({ timeout: 10000 });
 
     // 親メッセージが吹き出し形式で表示される
     const messageItem = page.getByTestId("message-item").filter({ hasText: testMessage });
@@ -38,10 +58,10 @@ test.describe("Chat Bubble UI and Reactions", () => {
 
   test("自分のメッセージが右寄せで青背景で表示される", async ({ page }) => {
     // 新しいスレッドを作成
-    const textarea = page.getByPlaceholder("新しいスレッドを作成...");
+    const threadEditor = page.getByTestId("thread-editor");
     const testMessage = `右寄せテスト ${Date.now()}`;
-    await textarea.fill(testMessage);
-    await textarea.press("Control+Enter");
+    await fillTiptapEditor(threadEditor, testMessage);
+    await submitTiptapEditor(threadEditor);
 
     // optimistic updateにより即座にスレッドが表示される
     const threadItem = page.getByTestId("thread-item").filter({ hasText: testMessage });
@@ -49,10 +69,10 @@ test.describe("Chat Bubble UI and Reactions", () => {
     await threadItem.click();
 
     // 返信を投稿（自分のメッセージ）
-    const replyTextarea = page.getByPlaceholder("返信を入力...");
+    const replyEditor = page.getByTestId("reply-editor");
     const replyMessage = `自分の返信 ${Date.now()}`;
-    await replyTextarea.fill(replyMessage);
-    await replyTextarea.press("Control+Enter");
+    await fillTiptapEditor(replyEditor, replyMessage);
+    await submitTiptapEditor(replyEditor);
 
     // 返信が表示されるのを待つ
     await expect(page.getByText(replyMessage)).toBeVisible({ timeout: 10000 });
@@ -68,36 +88,36 @@ test.describe("Chat Bubble UI and Reactions", () => {
 
   test("連続投稿でメッセージがグループ化される", async ({ page }) => {
     // 新しいスレッドを作成
-    const textarea = page.getByPlaceholder("新しいスレッドを作成...");
+    const threadEditor = page.getByTestId("thread-editor");
     const testMessage = `グループ化テスト ${Date.now()}`;
-    await textarea.fill(testMessage);
-    await textarea.press("Control+Enter");
+    await fillTiptapEditor(threadEditor, testMessage);
+    await submitTiptapEditor(threadEditor);
 
     // optimistic updateにより即座にスレッドが表示される
     const threadItem = page.getByTestId("thread-item").filter({ hasText: testMessage });
     await expect(threadItem).toBeVisible({ timeout: 10000 });
     await threadItem.click();
 
-    const replyTextarea = page.getByPlaceholder("返信を入力...");
+    const replyEditor = page.getByTestId("reply-editor");
 
     // 1件目の返信
     const reply1 = `返信1 ${Date.now()}`;
-    await replyTextarea.fill(reply1);
-    await replyTextarea.press("Control+Enter");
+    await fillTiptapEditor(replyEditor, reply1);
+    await submitTiptapEditor(replyEditor);
     await expect(page.getByText(reply1)).toBeVisible({ timeout: 10000 });
 
     // 2件目の返信（連続投稿）
     await page.waitForTimeout(500);
     const reply2 = `返信2 ${Date.now()}`;
-    await replyTextarea.fill(reply2);
-    await replyTextarea.press("Control+Enter");
+    await fillTiptapEditor(replyEditor, reply2);
+    await submitTiptapEditor(replyEditor);
     await expect(page.getByText(reply2)).toBeVisible({ timeout: 10000 });
 
     // 3件目の返信（連続投稿）
     await page.waitForTimeout(500);
     const reply3 = `返信3 ${Date.now()}`;
-    await replyTextarea.fill(reply3);
-    await replyTextarea.press("Control+Enter");
+    await fillTiptapEditor(replyEditor, reply3);
+    await submitTiptapEditor(replyEditor);
     await expect(page.getByText(reply3)).toBeVisible({ timeout: 10000 });
 
     // すべての返信が表示されている
@@ -110,10 +130,10 @@ test.describe("Chat Bubble UI and Reactions", () => {
 
   test("リアクション追加ボタンがホバーで表示される", async ({ page }) => {
     // 新しいスレッドを作成
-    const textarea = page.getByPlaceholder("新しいスレッドを作成...");
+    const threadEditor = page.getByTestId("thread-editor");
     const testMessage = `リアクションホバーテスト ${Date.now()}`;
-    await textarea.fill(testMessage);
-    await textarea.press("Control+Enter");
+    await fillTiptapEditor(threadEditor, testMessage);
+    await submitTiptapEditor(threadEditor);
 
     // optimistic updateにより即座にスレッドが表示される
     const threadItem = page.getByTestId("thread-item").filter({ hasText: testMessage });
@@ -121,10 +141,10 @@ test.describe("Chat Bubble UI and Reactions", () => {
     await threadItem.click();
 
     // 返信を投稿
-    const replyTextarea = page.getByPlaceholder("返信を入力...");
+    const replyEditor = page.getByTestId("reply-editor");
     const replyMessage = `リアクション対象 ${Date.now()}`;
-    await replyTextarea.fill(replyMessage);
-    await replyTextarea.press("Control+Enter");
+    await fillTiptapEditor(replyEditor, replyMessage);
+    await submitTiptapEditor(replyEditor);
 
     await expect(page.getByText(replyMessage)).toBeVisible({ timeout: 10000 });
 
@@ -140,10 +160,10 @@ test.describe("Chat Bubble UI and Reactions", () => {
 
   test("リアクションを追加できる", async ({ page }) => {
     // 新しいスレッドを作成
-    const textarea = page.getByPlaceholder("新しいスレッドを作成...");
+    const threadEditor = page.getByTestId("thread-editor");
     const testMessage = `リアクション追加テスト ${Date.now()}`;
-    await textarea.fill(testMessage);
-    await textarea.press("Control+Enter");
+    await fillTiptapEditor(threadEditor, testMessage);
+    await submitTiptapEditor(threadEditor);
 
     // optimistic updateにより即座にスレッドが表示される
     const threadItem = page.getByTestId("thread-item").filter({ hasText: testMessage });
@@ -151,10 +171,10 @@ test.describe("Chat Bubble UI and Reactions", () => {
     await threadItem.click();
 
     // 返信を投稿
-    const replyTextarea = page.getByPlaceholder("返信を入力...");
+    const replyEditor = page.getByTestId("reply-editor");
     const replyMessage = `リアクション追加対象 ${Date.now()}`;
-    await replyTextarea.fill(replyMessage);
-    await replyTextarea.press("Control+Enter");
+    await fillTiptapEditor(replyEditor, replyMessage);
+    await submitTiptapEditor(replyEditor);
 
     await expect(page.getByText(replyMessage)).toBeVisible({ timeout: 10000 });
 
@@ -183,10 +203,10 @@ test.describe("Chat Bubble UI and Reactions", () => {
 
   test("リアクションをクリックして削除できる", async ({ page }) => {
     // 新しいスレッドを作成
-    const textarea = page.getByPlaceholder("新しいスレッドを作成...");
+    const threadEditor = page.getByTestId("thread-editor");
     const testMessage = `リアクション削除テスト ${Date.now()}`;
-    await textarea.fill(testMessage);
-    await textarea.press("Control+Enter");
+    await fillTiptapEditor(threadEditor, testMessage);
+    await submitTiptapEditor(threadEditor);
 
     // optimistic updateにより即座にスレッドが表示される
     const threadItem = page.getByTestId("thread-item").filter({ hasText: testMessage });
@@ -194,10 +214,10 @@ test.describe("Chat Bubble UI and Reactions", () => {
     await threadItem.click();
 
     // 返信を投稿
-    const replyTextarea = page.getByPlaceholder("返信を入力...");
+    const replyEditor = page.getByTestId("reply-editor");
     const replyMessage = `リアクション削除対象 ${Date.now()}`;
-    await replyTextarea.fill(replyMessage);
-    await replyTextarea.press("Control+Enter");
+    await fillTiptapEditor(replyEditor, replyMessage);
+    await submitTiptapEditor(replyEditor);
 
     await expect(page.getByText(replyMessage)).toBeVisible({ timeout: 10000 });
 
@@ -230,10 +250,10 @@ test.describe("Chat Bubble UI and Reactions", () => {
 
   test("複数の絵文字でリアクションできる", async ({ page }) => {
     // 新しいスレッドを作成
-    const textarea = page.getByPlaceholder("新しいスレッドを作成...");
+    const threadEditor = page.getByTestId("thread-editor");
     const testMessage = `複数リアクションテスト ${Date.now()}`;
-    await textarea.fill(testMessage);
-    await textarea.press("Control+Enter");
+    await fillTiptapEditor(threadEditor, testMessage);
+    await submitTiptapEditor(threadEditor);
 
     // optimistic updateにより即座にスレッドが表示される
     const threadItem = page.getByTestId("thread-item").filter({ hasText: testMessage });
@@ -241,10 +261,10 @@ test.describe("Chat Bubble UI and Reactions", () => {
     await threadItem.click();
 
     // 返信を投稿
-    const replyTextarea = page.getByPlaceholder("返信を入力...");
+    const replyEditor = page.getByTestId("reply-editor");
     const replyMessage = `複数リアクション対象 ${Date.now()}`;
-    await replyTextarea.fill(replyMessage);
-    await replyTextarea.press("Control+Enter");
+    await fillTiptapEditor(replyEditor, replyMessage);
+    await submitTiptapEditor(replyEditor);
 
     await expect(page.getByText(replyMessage)).toBeVisible({ timeout: 10000 });
 
@@ -275,10 +295,10 @@ test.describe("Chat Bubble UI and Reactions", () => {
 
   test("編集済みメッセージでもリアクションが動作する", async ({ page }) => {
     // 新しいスレッドを作成
-    const textarea = page.getByPlaceholder("新しいスレッドを作成...");
+    const threadEditor = page.getByTestId("thread-editor");
     const testMessage = `編集後リアクションテスト ${Date.now()}`;
-    await textarea.fill(testMessage);
-    await textarea.press("Control+Enter");
+    await fillTiptapEditor(threadEditor, testMessage);
+    await submitTiptapEditor(threadEditor);
 
     // optimistic updateにより即座にスレッドが表示される
     const threadItem = page.getByTestId("thread-item").filter({ hasText: testMessage });
@@ -286,10 +306,10 @@ test.describe("Chat Bubble UI and Reactions", () => {
     await threadItem.click();
 
     // 返信を投稿
-    const replyTextarea = page.getByPlaceholder("返信を入力...");
+    const replyEditor = page.getByTestId("reply-editor");
     const originalReply = `編集前 ${Date.now()}`;
-    await replyTextarea.fill(originalReply);
-    await replyTextarea.press("Control+Enter");
+    await fillTiptapEditor(replyEditor, originalReply);
+    await submitTiptapEditor(replyEditor);
 
     await expect(page.getByText(originalReply)).toBeVisible({ timeout: 10000 });
 
