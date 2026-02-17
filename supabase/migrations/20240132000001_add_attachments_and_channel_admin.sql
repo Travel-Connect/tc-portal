@@ -14,10 +14,13 @@ COMMENT ON COLUMN public.chat_channels.description IS 'チャンネルの説明'
 -- 2. chat_channels の RLS ポリシーを更新（admin のみ作成/更新可能に）
 -- =====================================================
 
--- 既存ポリシーを削除
+-- 既存ポリシーを削除（旧名 "Authenticated can ..." と新名 "Admin can ..." の両方を削除）
 DROP POLICY IF EXISTS "Authenticated can insert channels" ON public.chat_channels;
 DROP POLICY IF EXISTS "Authenticated can update channels" ON public.chat_channels;
 DROP POLICY IF EXISTS "Authenticated can delete channels" ON public.chat_channels;
+DROP POLICY IF EXISTS "Admin can insert channels" ON public.chat_channels;
+DROP POLICY IF EXISTS "Admin can update channels" ON public.chat_channels;
+DROP POLICY IF EXISTS "Admin can delete channels" ON public.chat_channels;
 
 -- admin のみがチャンネルを作成可能
 CREATE POLICY "Admin can insert channels"

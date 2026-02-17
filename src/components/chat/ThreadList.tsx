@@ -25,6 +25,7 @@ interface ThreadListProps {
   selectedThreadId: string | null;
   onSelectThread: (threadId: string) => void;
   onNewThread: (thread: ChatThreadWithDetails) => void;
+  onAllMarkedAsRead?: () => void;
   isLoading: boolean;
   allTags: ChatTag[];
   selectedTagIds: string[];
@@ -42,6 +43,7 @@ export function ThreadList({
   selectedThreadId,
   onSelectThread,
   onNewThread,
+  onAllMarkedAsRead,
   isLoading,
   allTags,
   selectedTagIds,
@@ -106,8 +108,7 @@ export function ThreadList({
     const result = await markAllThreadsAsRead(channelId);
 
     if (result.success) {
-      // ページをリロードして未読バッジを更新
-      window.location.reload();
+      onAllMarkedAsRead?.();
     } else {
       console.error("Failed to mark all threads as read:", result.error);
     }
@@ -177,8 +178,11 @@ export function ThreadList({
   const visibleSelectedTags = selectedTags.slice(0, MAX_VISIBLE_TAGS);
   const hiddenTagCount = selectedTags.length - MAX_VISIBLE_TAGS;
 
-  // 未読スレッド数をカウント
-  const unreadCount = threads.filter((t) => t.is_unread).length;
+  // 削除済みスレッドを除外
+  const visibleThreads = threads.filter((t) => !t.deleted_at);
+
+  // 未読スレッド数をカウント（可視スレッドのみ）
+  const unreadCount = visibleThreads.filter((t) => t.is_unread).length;
 
   return (
     <div className="flex flex-col h-full">
@@ -365,16 +369,16 @@ export function ThreadList({
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
-        ) : threads.length === 0 ? (
+        ) : visibleThreads.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
             <MessageSquare className="h-8 w-8 mb-2" />
             <p className="text-sm">スレッドがありません</p>
           </div>
         ) : (
           <ul>
-            {threads.map((thread) => {
+            {visibleThreads.map((thread) => {
               const isUnread = thread.is_unread;
-              const unreadCount = thread.unread_count || 0;
+              const threadUnreadCount = thread.unread_count || 0;
               const displayDate = thread.last_activity_at || thread.created_at;
 
               return (
@@ -396,23 +400,22 @@ export function ThreadList({
                     <div className="flex items-start justify-between gap-2">
                       <p className={cn(
                         "text-sm line-clamp-2 flex-1",
-                        thread.deleted_at && "text-muted-foreground italic",
-                        isUnread && !thread.deleted_at && "font-semibold"
+                        isUnread && "font-semibold"
                       )}>
-                        {thread.deleted_at ? "[削除済み]" : stripHtml(thread.body)}
+                        {stripHtml(thread.body)}
                       </p>
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <span className="text-xs text-muted-foreground whitespace-nowrap">
                           {formatDate(displayDate)}
                         </span>
                         {/* 未読バッジ */}
-                        {isUnread && unreadCount > 0 && (
+                        {isUnread && threadUnreadCount > 0 && (
                           <Badge
                             variant="destructive"
                             className="h-5 min-w-[20px] px-1.5 text-[10px] font-bold"
                             data-testid="unread-badge"
                           >
-                            {unreadCount > 9 ? "9+" : unreadCount}
+                            {threadUnreadCount > 9 ? "9+" : threadUnreadCount}
                           </Badge>
                         )}
                       </div>

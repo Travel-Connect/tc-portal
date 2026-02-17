@@ -603,7 +603,7 @@ test.describe("Messages Page", () => {
     await expect(page.getByText(editedMessage).first()).toBeVisible({ timeout: 10000 });
   });
 
-  test("スレッドを削除できる", async ({ page }) => {
+  test("スレッドを削除すると一覧から消える", async ({ page }) => {
     await page.goto("/messages");
 
     // スレッドを作成
@@ -639,7 +639,10 @@ test.describe("Messages Page", () => {
     // ダイアログが閉じる
     await expect(page.getByRole("heading", { name: "スレッドを削除" })).not.toBeVisible({ timeout: 5000 });
 
-    // 「削除済み」表示になる
-    await expect(page.getByText("[削除済み]")).toBeVisible({ timeout: 10000 });
+    // スレッドが一覧から完全に消える（[削除済み]ではなく非表示）
+    await expect(page.getByTestId("thread-item").filter({ hasText: testMessage })).not.toBeVisible({ timeout: 10000 });
+
+    // 詳細パネルが閉じて「スレッドを選択してください」が表示される
+    await expect(page.getByText("スレッドを選択してください")).toBeVisible({ timeout: 5000 });
   });
 });

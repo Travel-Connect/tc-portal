@@ -6,6 +6,7 @@ import { ChannelList } from "./ChannelList";
 import { ThreadList } from "./ThreadList";
 import { ThreadDetail } from "./ThreadDetail";
 import { markThreadAsRead, getMentionableUsers } from "@/lib/actions/chat";
+import { useUnreadCount } from "@/contexts/UnreadCountContext";
 import type { ChatChannel, ChatThreadWithDetails, ChatTag, Profile, ThreadWithUnreadRow } from "@/types/database";
 
 interface MessagesLayoutProps {
@@ -25,8 +26,17 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [users, setUsers] = useState<Profile[]>([]);
+  const [channelUnreadCounts, setChannelUnreadCounts] = useState<Record<string, number>>({});
+
+  const { increment: incrementUnread, decrement: decrementUnread, setActiveChannelId } = useUnreadCount();
 
   const selectedChannel = channels.find((c) => c.id === selectedChannelId);
+
+  // 選択中チャンネルをContextに通知（グローバルRealtimeで重複スキップするため）
+  useEffect(() => {
+    setActiveChannelId(selectedChannelId);
+    return () => setActiveChannelId(null);
+  }, [selectedChannelId, setActiveChannelId]);
 
   // メンション用ユーザー一覧を取得
   useEffect(() => {
@@ -63,6 +73,29 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
 
     fetchTags();
   }, []);
+
+  // チャンネル別未読数を取得
+  useEffect(() => {
+    if (!currentUserId) return;
+    let cancelled = false;
+    const fetchCounts = async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase.rpc("get_channel_unread_counts", {
+        p_user_id: currentUserId,
+      });
+      if (cancelled || error) {
+        if (error) console.error("Error fetching channel unread counts:", error);
+        return;
+      }
+      const counts: Record<string, number> = {};
+      for (const row of (data || []) as { channel_id: string; unread_count: number }[]) {
+        counts[row.channel_id] = row.unread_count;
+      }
+      setChannelUnreadCounts(counts);
+    };
+    fetchCounts();
+    return () => { cancelled = true; };
+  }, [currentUserId]);
 
   // フォールバック: RPC未対応時の従来方式
   const fetchThreadsFallback = useCallback(async () => {
@@ -218,6 +251,9 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
     }
 
     setThreads(threadsData);
+    // 選択中チャンネルの未読数をスレッドデータから同期（RPC間のずれ防止）
+    const unreadInChannel = threadsData.filter((t) => t.is_unread && !t.deleted_at).length;
+    setChannelUnreadCounts((prev) => ({ ...prev, [selectedChannelId]: unreadInChannel }));
     setIsLoadingThreads(false);
   }, [selectedChannelId, currentUserId, selectedTagIds, searchQuery, fetchThreadsFallback]);
 
@@ -230,28 +266,40 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
     return () => clearTimeout(timer);
   }, [selectedChannelId, currentUserId, selectedTagIds, searchQuery, fetchThreadsWithUnread]);
 
-  // Realtime購読
+  // Realtime購読（全チャンネルINSERT + 選択チャンネルUPDATE を1つに統合）
   useEffect(() => {
-    if (!selectedChannelId) return;
+    if (!currentUserId) return;
 
     const supabase = createClient();
     const channel = supabase
-      .channel(`chat:${selectedChannelId}`)
-      // INSERT: 新規メッセージ
+      .channel("chat-realtime")
+      // INSERT: 全チャンネルの新規メッセージ（フィルタなし）
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
           table: "chat_messages",
-          filter: `channel_id=eq.${selectedChannelId}`,
         },
         async (payload) => {
-          const newMessage = payload.new as ChatThreadWithDetails;
+          const newMessage = payload.new as ChatThreadWithDetails & { channel_id: string };
+          const isOwnMessage = newMessage.created_by === currentUserId;
+
+          // ── 非選択チャンネルのメッセージ → チャンネルバッジのみ更新 ──
+          if (newMessage.channel_id !== selectedChannelId) {
+            if (!isOwnMessage) {
+              setChannelUnreadCounts((prev) => ({
+                ...prev,
+                [newMessage.channel_id]: (prev[newMessage.channel_id] || 0) + 1,
+              }));
+            }
+            return;
+          }
+
+          // ── 選択中チャンネルのメッセージ → スレッド一覧・バッジ全更新 ──
 
           // 親メッセージ（新規スレッド）の場合
           if (newMessage.parent_id === null) {
-            // プロフィール情報を取得
             const { data: profile } = await supabase
               .from("profiles")
               .select("*")
@@ -263,29 +311,40 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
               profiles: profile as Profile | null,
               reply_count: 0,
               last_activity_at: newMessage.created_at,
-              unread_count: 1,
-              is_unread: newMessage.created_by !== currentUserId,
+              unread_count: isOwnMessage ? 0 : 1,
+              is_unread: !isOwnMessage,
             };
-            // 重複チェック
             setThreads((prev) => {
-              if (prev.some((t) => t.id === newThread.id)) {
-                return prev;
-              }
+              if (prev.some((t) => t.id === newThread.id)) return prev;
               return [newThread, ...prev];
             });
+            if (!isOwnMessage) {
+              incrementUnread(1);
+              setChannelUnreadCounts((prev) => ({
+                ...prev,
+                [selectedChannelId!]: (prev[selectedChannelId!] || 0) + 1,
+              }));
+            }
           } else {
-            // 返信の場合、スレッドの状態を更新
+            // 返信の場合
             setThreads((prev) =>
               prev.map((t) => {
                 if (t.id === newMessage.parent_id) {
                   const isViewingThread = selectedThreadId === t.id;
-                  const isOwnMessage = newMessage.created_by === currentUserId;
+                  const wasUnread = t.is_unread;
+                  const nowUnread = isViewingThread || isOwnMessage ? t.is_unread : true;
+                  if (!wasUnread && nowUnread) {
+                    incrementUnread(1);
+                    setChannelUnreadCounts((prev) => ({
+                      ...prev,
+                      [selectedChannelId!]: (prev[selectedChannelId!] || 0) + 1,
+                    }));
+                  }
                   return {
                     ...t,
                     reply_count: (t.reply_count || 0) + 1,
                     last_activity_at: newMessage.created_at,
-                    // 閲覧中または自分の投稿なら未読にしない
-                    is_unread: isViewingThread || isOwnMessage ? t.is_unread : true,
+                    is_unread: nowUnread,
                     unread_count: isViewingThread || isOwnMessage
                       ? t.unread_count
                       : (t.unread_count || 0) + 1,
@@ -294,27 +353,44 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
                 return t;
               })
             );
-            // 閲覧中のスレッドなら自動既読
             if (selectedThreadId === newMessage.parent_id) {
               markThreadAsRead(newMessage.parent_id);
             }
           }
         }
       )
-      // UPDATE: メッセージ編集・削除
+      // UPDATE: 選択チャンネルのメッセージ編集・削除
       .on(
         "postgres_changes",
         {
           event: "UPDATE",
           schema: "public",
           table: "chat_messages",
-          filter: `channel_id=eq.${selectedChannelId}`,
+          filter: selectedChannelId ? `channel_id=eq.${selectedChannelId}` : undefined,
         },
         async (payload) => {
+          if (!selectedChannelId) return;
           const updatedMessage = payload.new as ChatThreadWithDetails;
 
-          // 親メッセージ（スレッド）の更新
           if (updatedMessage.parent_id === null) {
+            if (updatedMessage.deleted_at) {
+              setThreads((prev) => {
+                const deleted = prev.find((t) => t.id === updatedMessage.id);
+                if (deleted?.is_unread) {
+                  decrementUnread(1);
+                  setChannelUnreadCounts((p) => ({
+                    ...p,
+                    [selectedChannelId]: Math.max((p[selectedChannelId] || 0) - 1, 0),
+                  }));
+                }
+                return prev.filter((t) => t.id !== updatedMessage.id);
+              });
+              setSelectedThreadId((prev) =>
+                prev === updatedMessage.id ? null : prev
+              );
+              return;
+            }
+
             const { data: profile } = await supabase
               .from("profiles")
               .select("*")
@@ -343,7 +419,7 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [selectedChannelId, selectedThreadId, currentUserId]);
+  }, [selectedChannelId, selectedThreadId, currentUserId, incrementUnread, decrementUnread]);
 
   const handleNewThread = (thread: ChatThreadWithDetails) => {
     // 重複チェック
@@ -360,9 +436,25 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
     });
   };
 
+  // スレッド詳細を閉じる（useCallbackでRef安定化）
+  const handleCloseThread = useCallback(() => {
+    setSelectedThreadId(null);
+  }, []);
+
   // スレッド選択時に既読マーク & ローカル状態更新
   const handleSelectThread = async (threadId: string) => {
     setSelectedThreadId(threadId);
+    // 未読だった場合、サイドバーバッジ & チャンネルバッジをデクリメント
+    const thread = threads.find((t) => t.id === threadId);
+    if (thread?.is_unread) {
+      decrementUnread(1);
+      if (selectedChannelId) {
+        setChannelUnreadCounts((prev) => ({
+          ...prev,
+          [selectedChannelId]: Math.max((prev[selectedChannelId] || 0) - 1, 0),
+        }));
+      }
+    }
     // ローカル状態を即座に更新
     setThreads((prev) =>
       prev.map((t) =>
@@ -373,6 +465,24 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
     );
   };
 
+  // チャンネル内全既読後のバッジ更新ハンドラ
+  const handleAllMarkedAsRead = () => {
+    const unreadInChannel = threads.filter((t) => t.is_unread).length;
+    decrementUnread(unreadInChannel);
+    if (selectedChannelId) {
+      setChannelUnreadCounts((prev) => ({ ...prev, [selectedChannelId]: 0 }));
+    }
+    setThreads((prev) => prev.map((t) => ({ ...t, is_unread: false, unread_count: 0 })));
+  };
+
+  // 全チャンネル既読後のハンドラ
+  const handleAllChannelsMarkedAsRead = () => {
+    const totalUnread = Object.values(channelUnreadCounts).reduce((sum, c) => sum + c, 0);
+    decrementUnread(totalUnread);
+    setChannelUnreadCounts({});
+    setThreads((prev) => prev.map((t) => ({ ...t, is_unread: false, unread_count: 0 })));
+  };
+
   return (
     <div className="flex h-full">
       {/* 左カラム: チャンネル一覧 */}
@@ -381,6 +491,8 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
           channels={channels}
           selectedChannelId={selectedChannelId}
           onSelectChannel={setSelectedChannelId}
+          channelUnreadCounts={channelUnreadCounts}
+          onAllChannelsMarkedAsRead={handleAllChannelsMarkedAsRead}
         />
       </div>
 
@@ -393,6 +505,7 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
           selectedThreadId={selectedThreadId}
           onSelectThread={handleSelectThread}
           onNewThread={handleNewThread}
+          onAllMarkedAsRead={handleAllMarkedAsRead}
           isLoading={isLoadingThreads}
           allTags={allTags}
           selectedTagIds={selectedTagIds}
@@ -408,7 +521,12 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
         {selectedThreadId ? (
           <ThreadDetail
             threadId={selectedThreadId}
-            onClose={() => setSelectedThreadId(null)}
+            onClose={handleCloseThread}
+            onThreadDeleted={() => {
+              // スレッド一覧から削除 (Realtimeでも処理されるがoptimistic)
+              setThreads((prev) => prev.filter((t) => t.id !== selectedThreadId));
+              setSelectedThreadId(null);
+            }}
           />
         ) : (
           <div className="flex-1 flex items-center justify-center text-muted-foreground">

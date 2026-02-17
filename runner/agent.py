@@ -4,6 +4,7 @@ TC Portal Windows Runner Agent
 
 Windowsマシンで常駐し、ポータルからの実行依頼をポーリングして実行する。
 """
+from __future__ import annotations
 
 import json
 import os

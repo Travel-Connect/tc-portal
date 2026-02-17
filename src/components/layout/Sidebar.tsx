@@ -12,6 +12,7 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useUnreadCount } from "@/contexts/UnreadCountContext";
 
 interface NavItem {
   href: string;
@@ -34,11 +35,11 @@ const navItems: NavItem[] = [
 interface SidebarProps {
   isAdmin?: boolean;
   failedTaskCount?: number;
-  unreadMessageCount?: number;
 }
 
-export function Sidebar({ isAdmin = false, failedTaskCount = 0, unreadMessageCount = 0 }: SidebarProps) {
+export function Sidebar({ isAdmin = false, failedTaskCount = 0 }: SidebarProps) {
   const pathname = usePathname();
+  const { count: unreadMessageCount } = useUnreadCount();
 
   const filteredItems = navItems.filter(
     (item) => !item.adminOnly || isAdmin
