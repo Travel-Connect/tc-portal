@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, memo } from "react";
 import { Hash, CheckCheck, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +16,7 @@ interface ChannelListProps {
   onAllChannelsMarkedAsRead?: () => void;
 }
 
-export function ChannelList({
+export const ChannelList = memo(function ChannelList({
   channels,
   selectedChannelId,
   onSelectChannel,
@@ -103,4 +103,4 @@ export function ChannelList({
       </nav>
     </div>
   );
-}
+});

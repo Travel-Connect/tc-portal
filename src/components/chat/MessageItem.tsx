@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, memo } from "react";
 import { MoreHorizontal, Pencil, Trash2, Loader2, Check, X, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -86,7 +86,7 @@ function getInitials(displayName: string | null, email: string | null): string {
   return "??";
 }
 
-export function MessageItem({
+export const MessageItem = memo(function MessageItem({
   message,
   currentUserId,
   onUpdate,
@@ -495,7 +495,7 @@ export function MessageItem({
       </Dialog>
     </>
   );
-}
+});
 
 /**
  * メッセージをグループ化するユーティリティ

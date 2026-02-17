@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ChannelList } from "./ChannelList";
 import { ThreadList } from "./ThreadList";
@@ -29,6 +29,12 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
   const [channelUnreadCounts, setChannelUnreadCounts] = useState<Record<string, number>>({});
 
   const { increment: incrementUnread, decrement: decrementUnread, setActiveChannelId } = useUnreadCount();
+
+  // Realtimeコールバック用ref（最新の状態を非同期コールバック内で参照）
+  const usersRef = useRef<Profile[]>([]);
+  useEffect(() => { usersRef.current = users; }, [users]);
+  const threadsRef = useRef<ChatThreadWithDetails[]>([]);
+  useEffect(() => { threadsRef.current = threads; }, [threads]);
 
   const selectedChannel = channels.find((c) => c.id === selectedChannelId);
 
@@ -281,7 +287,7 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
           schema: "public",
           table: "chat_messages",
         },
-        async (payload) => {
+        (payload) => {
           const newMessage = payload.new as ChatThreadWithDetails & { channel_id: string };
           const isOwnMessage = newMessage.created_by === currentUserId;
 
@@ -300,15 +306,12 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
 
           // 親メッセージ（新規スレッド）の場合
           if (newMessage.parent_id === null) {
-            const { data: profile } = await supabase
-              .from("profiles")
-              .select("*")
-              .eq("id", newMessage.created_by)
-              .single();
+            // キャッシュ済みユーザー一覧からプロフィールを取得
+            const profile = usersRef.current.find((u) => u.id === newMessage.created_by) || null;
 
             const newThread: ChatThreadWithDetails = {
               ...newMessage,
-              profiles: profile as Profile | null,
+              profiles: profile,
               reply_count: 0,
               last_activity_at: newMessage.created_at,
               unread_count: isOwnMessage ? 0 : 1,
@@ -368,7 +371,7 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
           table: "chat_messages",
           filter: selectedChannelId ? `channel_id=eq.${selectedChannelId}` : undefined,
         },
-        async (payload) => {
+        (payload) => {
           if (!selectedChannelId) return;
           const updatedMessage = payload.new as ChatThreadWithDetails;
 
@@ -391,18 +394,15 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
               return;
             }
 
-            const { data: profile } = await supabase
-              .from("profiles")
-              .select("*")
-              .eq("id", updatedMessage.created_by)
-              .single();
+            // キャッシュ済みユーザー一覧からプロフィールを取得
+            const profile = usersRef.current.find((u) => u.id === updatedMessage.created_by) || null;
 
             setThreads((prev) =>
               prev.map((t) =>
                 t.id === updatedMessage.id
                   ? {
                       ...updatedMessage,
-                      profiles: profile as Profile | null,
+                      profiles: profile,
                       reply_count: t.reply_count,
                       last_activity_at: t.last_activity_at,
                       unread_count: t.unread_count,
@@ -421,7 +421,7 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
     };
   }, [selectedChannelId, selectedThreadId, currentUserId, incrementUnread, decrementUnread]);
 
-  const handleNewThread = (thread: ChatThreadWithDetails) => {
+  const handleNewThread = useCallback((thread: ChatThreadWithDetails) => {
     // 重複チェック
     setThreads((prev) => {
       if (prev.some((t) => t.id === thread.id)) {
@@ -434,18 +434,24 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
         is_unread: false, // 自分で作成したので既読
       }, ...prev];
     });
-  };
+  }, []);
 
-  // スレッド詳細を閉じる（useCallbackでRef安定化）
+  // スレッド詳細を閉じる（useCallbackで安定化）
   const handleCloseThread = useCallback(() => {
     setSelectedThreadId(null);
   }, []);
 
-  // スレッド選択時に既読マーク & ローカル状態更新
-  const handleSelectThread = async (threadId: string) => {
+  // スレッド削除ハンドラ（useCallbackで安定化）
+  const handleThreadDeleted = useCallback(() => {
+    setThreads((prev) => prev.filter((t) => t.id !== selectedThreadId));
+    setSelectedThreadId(null);
+  }, [selectedThreadId]);
+
+  // スレッド選択時に既読マーク & ローカル状態更新（useCallbackで安定化）
+  const handleSelectThread = useCallback((threadId: string) => {
     setSelectedThreadId(threadId);
     // 未読だった場合、サイドバーバッジ & チャンネルバッジをデクリメント
-    const thread = threads.find((t) => t.id === threadId);
+    const thread = threadsRef.current.find((t) => t.id === threadId);
     if (thread?.is_unread) {
       decrementUnread(1);
       if (selectedChannelId) {
@@ -463,25 +469,27 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
           : t
       )
     );
-  };
+  }, [decrementUnread, selectedChannelId]);
 
-  // チャンネル内全既読後のバッジ更新ハンドラ
-  const handleAllMarkedAsRead = () => {
-    const unreadInChannel = threads.filter((t) => t.is_unread).length;
+  // チャンネル内全既読後のバッジ更新ハンドラ（useCallbackで安定化）
+  const handleAllMarkedAsRead = useCallback(() => {
+    const unreadInChannel = threadsRef.current.filter((t) => t.is_unread).length;
     decrementUnread(unreadInChannel);
     if (selectedChannelId) {
       setChannelUnreadCounts((prev) => ({ ...prev, [selectedChannelId]: 0 }));
     }
     setThreads((prev) => prev.map((t) => ({ ...t, is_unread: false, unread_count: 0 })));
-  };
+  }, [decrementUnread, selectedChannelId]);
 
-  // 全チャンネル既読後のハンドラ
-  const handleAllChannelsMarkedAsRead = () => {
-    const totalUnread = Object.values(channelUnreadCounts).reduce((sum, c) => sum + c, 0);
-    decrementUnread(totalUnread);
-    setChannelUnreadCounts({});
+  // 全チャンネル既読後のハンドラ（useCallbackで安定化）
+  const handleAllChannelsMarkedAsRead = useCallback(() => {
+    setChannelUnreadCounts((prev) => {
+      const totalUnread = Object.values(prev).reduce((sum, c) => sum + c, 0);
+      decrementUnread(totalUnread);
+      return {};
+    });
     setThreads((prev) => prev.map((t) => ({ ...t, is_unread: false, unread_count: 0 })));
-  };
+  }, [decrementUnread]);
 
   return (
     <div className="flex h-full">
@@ -522,11 +530,8 @@ export function MessagesLayout({ initialChannels }: MessagesLayoutProps) {
           <ThreadDetail
             threadId={selectedThreadId}
             onClose={handleCloseThread}
-            onThreadDeleted={() => {
-              // スレッド一覧から削除 (Realtimeでも処理されるがoptimistic)
-              setThreads((prev) => prev.filter((t) => t.id !== selectedThreadId));
-              setSelectedThreadId(null);
-            }}
+            onThreadDeleted={handleThreadDeleted}
+            users={users}
           />
         ) : (
           <div className="flex-1 flex items-center justify-center text-muted-foreground">
