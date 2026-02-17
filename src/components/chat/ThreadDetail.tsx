@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { X, Loader2, Settings, Pencil, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { createReply, markThreadAsRead, uploadAttachment, getMentionableUsers, getMessagesReactions, updateMessage, deleteMessage, uploadInlineImage } from "@/lib/actions/chat";
+import { createReply, markThreadAsRead, uploadAttachment, getMessagesReactions, updateMessage, deleteMessage, uploadInlineImage } from "@/lib/actions/chat";
 import { TagInput } from "./TagInput";
 import { MessageItem, groupMessages } from "./MessageItem";
 import { FileUpload } from "./FileUpload";
@@ -29,6 +29,7 @@ interface ThreadDetailProps {
   threadId: string;
   onClose: () => void;
   onThreadDeleted?: () => void;
+  users?: Profile[];
 }
 
 /** 日付をローカル日付文字列に変換（YYYY-MM-DD） */
@@ -66,7 +67,7 @@ function DateSeparator({ label }: { label: string }) {
   );
 }
 
-export function ThreadDetail({ threadId, onClose, onThreadDeleted }: ThreadDetailProps) {
+export function ThreadDetail({ threadId, onClose, onThreadDeleted, users: usersProp = [] }: ThreadDetailProps) {
   const [thread, setThread] = useState<ChatMessageWithAuthor | null>(null);
   const [replies, setReplies] = useState<ChatMessageWithAuthor[]>([]);
   const [tags, setTags] = useState<ChatTag[]>([]);
@@ -76,7 +77,6 @@ export function ThreadDetail({ threadId, onClose, onThreadDeleted }: ThreadDetai
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [channelId, setChannelId] = useState<string | null>(null);
-  const [users, setUsers] = useState<Profile[]>([]);
   // スレッドヘッダーの編集/削除用
   const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
   const [isHeaderEditDialogOpen, setIsHeaderEditDialogOpen] = useState(false);
@@ -87,10 +87,9 @@ export function ThreadDetail({ threadId, onClose, onThreadDeleted }: ThreadDetai
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const replyEditorRef = useRef<WysiwygEditorRef>(null);
 
-  // メンション用ユーザー一覧を取得
-  useEffect(() => {
-    getMentionableUsers().then(setUsers);
-  }, []);
+  // Realtimeコールバック用: 最新のusers一覧をrefで参照
+  const usersRef = useRef<Profile[]>(usersProp);
+  useEffect(() => { usersRef.current = usersProp; }, [usersProp]);
 
   // スレッドと返信を取得
   useEffect(() => {
@@ -215,19 +214,15 @@ export function ThreadDetail({ threadId, onClose, onThreadDeleted }: ThreadDetai
           table: "chat_messages",
           filter: `parent_id=eq.${threadId}`,
         },
-        async (payload) => {
+        (payload) => {
           const newReply = payload.new as ChatMessageWithAuthor;
 
-          // プロフィール情報を取得
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", newReply.created_by)
-            .single();
+          // キャッシュ済みユーザー一覧からプロフィールを取得
+          const profile = usersRef.current.find((u) => u.id === newReply.created_by) || null;
 
           const newMessage: ChatMessageWithAuthor = {
             ...newReply,
-            profiles: profile as Profile | null,
+            profiles: profile,
             reactions: [],
             attachments: [],
           };
@@ -250,20 +245,16 @@ export function ThreadDetail({ threadId, onClose, onThreadDeleted }: ThreadDetai
           table: "chat_messages",
           filter: `parent_id=eq.${threadId}`,
         },
-        async (payload) => {
+        (payload) => {
           const updatedReply = payload.new as ChatMessageWithAuthor;
 
-          // プロフィール情報を取得
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", updatedReply.created_by)
-            .single();
+          // キャッシュ済みユーザー一覧からプロフィールを取得
+          const profile = usersRef.current.find((u) => u.id === updatedReply.created_by) || null;
 
           setReplies((prev) =>
             prev.map((r) =>
               r.id === updatedReply.id
-                ? { ...updatedReply, profiles: profile as Profile | null, reactions: r.reactions, attachments: r.attachments }
+                ? { ...updatedReply, profiles: profile, reactions: r.reactions, attachments: r.attachments }
                 : r
             )
           );
@@ -278,7 +269,7 @@ export function ThreadDetail({ threadId, onClose, onThreadDeleted }: ThreadDetai
           table: "chat_messages",
           filter: `id=eq.${threadId}`,
         },
-        async (payload) => {
+        (payload) => {
           const updatedThread = payload.new as ChatMessageWithAuthor;
 
           // 他ユーザーによる削除 → 自動でスレッドを閉じる
@@ -287,16 +278,12 @@ export function ThreadDetail({ threadId, onClose, onThreadDeleted }: ThreadDetai
             return;
           }
 
-          // プロフィール情報を取得
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", updatedThread.created_by)
-            .single();
+          // キャッシュ済みユーザー一覧からプロフィールを取得
+          const profile = usersRef.current.find((u) => u.id === updatedThread.created_by) || null;
 
           setThread((prev) => ({
             ...updatedThread,
-            profiles: profile as Profile | null,
+            profiles: profile,
             reactions: prev?.reactions || [],
             attachments: prev?.attachments || [],
           }));
@@ -310,7 +297,7 @@ export function ThreadDetail({ threadId, onClose, onThreadDeleted }: ThreadDetai
           schema: "public",
           table: "chat_message_reactions",
         },
-        async (payload) => {
+        (payload) => {
           const newReaction = payload.new as {
             id: string;
             message_id: string;
@@ -328,12 +315,8 @@ export function ThreadDetail({ threadId, onClose, onThreadDeleted }: ThreadDetai
             return;
           }
 
-          // ユーザー情報を取得
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("id, display_name")
-            .eq("id", newReaction.user_id)
-            .single();
+          // キャッシュ済みユーザー一覧からプロフィールを取得
+          const profile = usersRef.current.find((u) => u.id === newReaction.user_id);
 
           const updateReactions = (reactions: ReactionSummary[]): ReactionSummary[] => {
             const existing = reactions.find((r) => r.emoji === newReaction.emoji);
@@ -474,10 +457,14 @@ export function ThreadDetail({ threadId, onClose, onThreadDeleted }: ThreadDetai
     };
   }, [threadId, currentUserId, onClose]);
 
-  // 新しいメッセージが追加されたらスクロール
+  // 新しい返信が追加された場合のみスクロール（リアクション等では不要）
+  const prevReplyCountRef = useRef(replies.length);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [replies]);
+    if (replies.length > prevReplyCountRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    prevReplyCountRef.current = replies.length;
+  }, [replies.length]);
 
   const handleSubmit = async () => {
     // useRefで同期的に二重送信を防止
@@ -536,8 +523,8 @@ export function ThreadDetail({ threadId, onClose, onThreadDeleted }: ThreadDetai
     return null;
   }, [channelId, threadId]);
 
-  // リアクション変更ハンドラ
-  const handleReactionChange = (messageId: string, newReactions: ReactionSummary[]) => {
+  // リアクション変更ハンドラ（useCallbackで安定化）
+  const handleReactionChange = useCallback((messageId: string, newReactions: ReactionSummary[]) => {
     if (messageId === threadId) {
       setThread((prev) => prev ? { ...prev, reactions: newReactions } : null);
     } else {
@@ -545,7 +532,23 @@ export function ThreadDetail({ threadId, onClose, onThreadDeleted }: ThreadDetai
         prev.map((r) => (r.id === messageId ? { ...r, reactions: newReactions } : r))
       );
     }
-  };
+  }, [threadId]);
+
+  // 返信の更新ハンドラ（useCallbackで安定化 → MessageItemのReact.memoに対応）
+  const handleReplyUpdate = useCallback((updatedMessage: ChatMessageWithAuthor) => {
+    setReplies((prev) =>
+      prev.map((r) => (r.id === updatedMessage.id ? updatedMessage : r))
+    );
+  }, []);
+
+  // 返信の削除ハンドラ（useCallbackで安定化）
+  const handleReplyDelete = useCallback((messageId: string) => {
+    setReplies((prev) =>
+      prev.map((r) =>
+        r.id === messageId ? { ...r, deleted_at: new Date().toISOString() } : r
+      )
+    );
+  }, []);
 
   // スレッドヘッダーの編集ハンドラ
   const handleHeaderEdit = () => {
@@ -596,6 +599,9 @@ export function ThreadDetail({ threadId, onClose, onThreadDeleted }: ThreadDetai
   // スレッド所有者かどうか
   const isThreadOwner = thread?.created_by === currentUserId;
 
+  // 返信をグループ化（useMemoでキャッシュ、Hooksルールのため早期returnの前に配置）
+  const groupedReplies = useMemo(() => groupMessages(replies), [replies]);
+
   // HTMLタグを除去してプレーンテキストを取得
   const stripHtml = (html: string) => {
     if (typeof document !== "undefined") {
@@ -620,9 +626,6 @@ export function ThreadDetail({ threadId, onClose, onThreadDeleted }: ThreadDetai
       </div>
     );
   }
-
-  // 返信をグループ化
-  const groupedReplies = groupMessages(replies);
 
   return (
     <div className="flex flex-col h-full">
@@ -669,7 +672,7 @@ export function ThreadDetail({ threadId, onClose, onThreadDeleted }: ThreadDetai
               </PopoverContent>
             </Popover>
           )}
-          <Button variant="ghost" size="icon" onClick={onClose}>
+          <Button variant="ghost" size="icon" onClick={onClose} data-testid="thread-close-button">
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -793,19 +796,8 @@ export function ThreadDetail({ threadId, onClose, onThreadDeleted }: ThreadDetai
                     currentUserId={currentUserId || ""}
                     variant="reply"
                     groupPosition={position}
-                    onUpdate={(updatedMessage) => {
-                      setReplies((prev) =>
-                        prev.map((r) => (r.id === updatedMessage.id ? updatedMessage : r))
-                      );
-                    }}
-                    onDelete={(messageId) => {
-                      // 削除済みに更新（リストからは削除しない）
-                      setReplies((prev) =>
-                        prev.map((r) =>
-                          r.id === messageId ? { ...r, deleted_at: new Date().toISOString() } : r
-                        )
-                      );
-                    }}
+                    onUpdate={handleReplyUpdate}
+                    onDelete={handleReplyDelete}
                     onReactionChange={handleReactionChange}
                   />
                 </div>

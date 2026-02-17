@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo, useCallback, memo } from "react";
 import { MessageSquare, Loader2, X, Search, Tag, Filter, CheckCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useCallback } from "react";
 import { createThread, uploadAttachment, markAllThreadsAsRead, uploadInlineImage } from "@/lib/actions/chat";
 import { FileUpload } from "./FileUpload";
 import { WysiwygEditor, WysiwygEditorRef, ImageUploadResult } from "./WysiwygEditor";
@@ -36,7 +35,7 @@ interface ThreadListProps {
   users?: Profile[];
 }
 
-export function ThreadList({
+export const ThreadList = memo(function ThreadList({
   channelId,
   channelName,
   threads,
@@ -168,21 +167,31 @@ export function ThreadList({
   };
 
   // タグフィルタ用のタグ一覧（検索でフィルタ）
-  const filteredTags = allTags.filter((tag) =>
-    tag.name.toLowerCase().includes(tagSearchQuery.toLowerCase())
+  const filteredTags = useMemo(
+    () => allTags.filter((tag) => tag.name.toLowerCase().includes(tagSearchQuery.toLowerCase())),
+    [allTags, tagSearchQuery]
   );
 
   // 選択中のタグ（表示用）
-  const selectedTags = allTags.filter((tag) => selectedTagIds.includes(tag.id));
+  const selectedTags = useMemo(
+    () => allTags.filter((tag) => selectedTagIds.includes(tag.id)),
+    [allTags, selectedTagIds]
+  );
   const MAX_VISIBLE_TAGS = 3;
   const visibleSelectedTags = selectedTags.slice(0, MAX_VISIBLE_TAGS);
   const hiddenTagCount = selectedTags.length - MAX_VISIBLE_TAGS;
 
   // 削除済みスレッドを除外
-  const visibleThreads = threads.filter((t) => !t.deleted_at);
+  const visibleThreads = useMemo(
+    () => threads.filter((t) => !t.deleted_at),
+    [threads]
+  );
 
   // 未読スレッド数をカウント（可視スレッドのみ）
-  const unreadCount = visibleThreads.filter((t) => t.is_unread).length;
+  const unreadCount = useMemo(
+    () => visibleThreads.filter((t) => t.is_unread).length,
+    [visibleThreads]
+  );
 
   return (
     <div className="flex flex-col h-full">
@@ -220,6 +229,7 @@ export function ThreadList({
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               className="h-8 pl-8 text-sm"
+              data-testid="thread-search-input"
             />
             {searchQuery && (
               <button
@@ -439,4 +449,4 @@ export function ThreadList({
       </div>
     </div>
   );
-}
+});

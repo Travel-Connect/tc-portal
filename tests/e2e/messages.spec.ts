@@ -286,7 +286,7 @@ test.describe("Messages Page", () => {
     await page.waitForTimeout(500);
 
     // スレッド詳細を閉じる（Xボタン）
-    const closeButton = page.locator("button").filter({ has: page.locator("svg") }).filter({ hasText: "" }).nth(1);
+    const closeButton = page.getByTestId("thread-close-button");
     await closeButton.click();
 
     // タグフィルタセクションにタグが表示されるまでリロード
