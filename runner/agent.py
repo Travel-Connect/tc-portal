@@ -715,6 +715,128 @@ def process_task(task: dict[str, Any], config: dict[str, Any]) -> None:
     report_result(config, run_id, status, summary, error, log_path=log_path)
 
 
+# ---------------------------------------------------------------------------
+# Lincoln Runner — on-demand job execution
+# ジョブがある時だけコンソールを起動し、完了後に自動で閉じる
+# ---------------------------------------------------------------------------
+_lincoln_process: Optional[subprocess.Popen] = None
+_lincoln_env: Optional[dict[str, str]] = None
+
+
+def _load_lincoln_env(project_path: str) -> dict[str, str]:
+    """Lincoln の .env ファイルから Supabase 接続情報を読み取る"""
+    env_path = Path(project_path) / ".env"
+    if not env_path.exists():
+        return {}
+    env: dict[str, str] = {}
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        env[key.strip()] = value.strip()
+    return env
+
+
+def _fetch_pending_lincoln_job(
+    supabase_url: str, supabase_key: str
+) -> Optional[dict[str, Any]]:
+    """Lincoln Supabase から PENDING ジョブを1件取得"""
+    url = f"{supabase_url}/rest/v1/jobs"
+    headers = {
+        "apikey": supabase_key,
+        "Authorization": f"Bearer {supabase_key}",
+        "Accept-Profile": "lincoln",
+    }
+    params = {
+        "status": "eq.PENDING",
+        "order": "created_at.asc",
+        "limit": "1",
+    }
+    try:
+        resp = requests.get(url, headers=headers, params=params, timeout=10)
+        if resp.ok:
+            jobs = resp.json()
+            if jobs:
+                return jobs[0]
+    except Exception:
+        pass
+    return None
+
+
+def check_lincoln_jobs(config: dict[str, Any]) -> None:
+    """Lincoln ジョブを確認し、PENDING があれば Runner を起動"""
+    global _lincoln_process, _lincoln_env
+
+    lincoln_config = config.get("lincoln", {})
+    if not lincoln_config.get("enabled", False):
+        return
+
+    project_path = lincoln_config.get(
+        "project_path", r"C:\lincolnpricereflected"
+    )
+
+    # 実行中のジョブがあるか確認
+    if _lincoln_process is not None:
+        if _lincoln_process.poll() is None:
+            return  # まだ実行中
+        code = _lincoln_process.returncode
+        _lincoln_process = None
+        log(f"[lincoln] Job finished (exit code: {code})")
+
+    # .env を一度だけ読み込み
+    if _lincoln_env is None:
+        if not Path(project_path).is_dir():
+            log(f"[lincoln] Project path not found: {project_path}")
+            return
+        _lincoln_env = _load_lincoln_env(project_path)
+        if not _lincoln_env.get("SUPABASE_URL") or not _lincoln_env.get(
+            "SUPABASE_SERVICE_ROLE_KEY"
+        ):
+            log("[lincoln] .env missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
+            return
+
+    # PENDING ジョブを確認
+    job = _fetch_pending_lincoln_job(
+        _lincoln_env["SUPABASE_URL"],
+        _lincoln_env["SUPABASE_SERVICE_ROLE_KEY"],
+    )
+    if not job:
+        return
+
+    # ジョブ発見 → Runner を起動
+    job_id = job["id"]
+    log(f"[lincoln] Found pending job: {job_id} — launching runner")
+
+    cmd = ["cmd", "/c", "npx", "tsx", "apps/runner/src/main.ts", "--job-id", job_id]
+
+    try:
+        _lincoln_process = subprocess.Popen(
+            cmd,
+            cwd=project_path,
+            creationflags=subprocess.CREATE_NEW_CONSOLE,
+        )
+        log(f"[lincoln] Runner started (PID: {_lincoln_process.pid})")
+    except Exception as e:
+        log(f"[lincoln] Failed to start runner: {e}")
+        _lincoln_process = None
+
+
+def stop_lincoln_runner() -> None:
+    """Lincoln Runner を停止"""
+    global _lincoln_process
+    if _lincoln_process is not None and _lincoln_process.poll() is None:
+        log("[lincoln] Stopping Lincoln Runner...")
+        _lincoln_process.terminate()
+        try:
+            _lincoln_process.wait(timeout=10)
+            log("[lincoln] Lincoln Runner stopped gracefully")
+        except subprocess.TimeoutExpired:
+            _lincoln_process.kill()
+            log("[lincoln] Lincoln Runner force-killed")
+    _lincoln_process = None
+
+
 def main() -> None:
     """メインループ"""
     log("TC Portal Runner Agent starting...")
@@ -727,6 +849,14 @@ def main() -> None:
     log(f"Poll interval: {poll_interval} seconds")
     log(f"Heartbeat interval: {heartbeat_interval} seconds")
 
+    # Lincoln Runner 統合
+    lincoln_config = config.get("lincoln", {})
+    if lincoln_config.get("enabled", False):
+        log(f"[lincoln] Lincoln Runner integration ENABLED")
+        log(f"[lincoln] Project: {lincoln_config.get('project_path', r'C:\lincolnpricereflected')}")
+    else:
+        log("[lincoln] Lincoln Runner integration disabled")
+
     # 起動時にハートビートを送信
     hostname = os.environ.get("COMPUTERNAME", "unknown")
     log(f"Hostname: {hostname}")
@@ -737,24 +867,30 @@ def main() -> None:
 
     last_heartbeat = time.time()
 
-    while True:
-        try:
-            # 定期的にハートビートを送信
-            now = time.time()
-            if now - last_heartbeat >= heartbeat_interval:
-                send_heartbeat(config)
-                last_heartbeat = now
+    try:
+        while True:
+            try:
+                # 定期的にハートビートを送信
+                now = time.time()
+                if now - last_heartbeat >= heartbeat_interval:
+                    send_heartbeat(config)
+                    last_heartbeat = now
 
-            task = claim_task(config)
-            if task:
-                process_task(task, config)
-            else:
-                # タスクがない場合は待機
-                pass
-        except Exception as e:
-            log(f"Error in main loop: {e}")
+                # Lincoln ジョブ確認（PENDING があれば Runner 起動）
+                check_lincoln_jobs(config)
 
-        time.sleep(poll_interval)
+                task = claim_task(config)
+                if task:
+                    process_task(task, config)
+                else:
+                    # タスクがない場合は待機
+                    pass
+            except Exception as e:
+                log(f"Error in main loop: {e}")
+
+            time.sleep(poll_interval)
+    finally:
+        stop_lincoln_runner()
 
 
 if __name__ == "__main__":

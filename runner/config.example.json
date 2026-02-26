@@ -6,5 +6,9 @@
   "python_exe": "python",
   "scripts_base_path": "C:\\Scripts",
   "pad_exe": "C:\\Program Files (x86)\\Power Automate Desktop\\PAD.Console.Host.exe",
-  "log_dir": "C:\\TcPortalLogs"
+  "log_dir": "C:\\TcPortalLogs",
+  "lincoln": {
+    "enabled": false,
+    "project_path": "C:\\lincolnpricereflected"
+  }
 }
