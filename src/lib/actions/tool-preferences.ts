@@ -120,7 +120,7 @@ export async function setToolColor(
     }
   }
 
-  revalidatePath("/");
+  revalidatePath("/", "page");
   revalidatePath("/tools");
   revalidatePath("/admin/tools");
 

@@ -77,7 +77,6 @@ export async function createRun(
 
   revalidatePath("/runs");
   revalidatePath("/tools");
-  revalidatePath("/");
 
   return { success: true, runId: run.id };
 }
@@ -159,7 +158,6 @@ export async function createHelperRun(toolId: string): Promise<{
 
   revalidatePath("/runs");
   revalidatePath("/tools");
-  revalidatePath("/");
 
   return { success: true, runId: run.id };
 }

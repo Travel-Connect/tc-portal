@@ -33,7 +33,7 @@ export async function togglePin(toolId: string): Promise<{ success: boolean; isP
       return { success: false, isPinned: true };
     }
 
-    revalidatePath("/");
+    revalidatePath("/", "page");
     revalidatePath("/tools");
     return { success: true, isPinned: false };
   } else {
@@ -58,7 +58,7 @@ export async function togglePin(toolId: string): Promise<{ success: boolean; isP
       return { success: false, isPinned: false };
     }
 
-    revalidatePath("/");
+    revalidatePath("/", "page");
     revalidatePath("/tools");
     return { success: true, isPinned: true };
   }
@@ -94,6 +94,6 @@ export async function savePinOrders(
     }
   }
 
-  revalidatePath("/");
+  revalidatePath("/", "page");
   return { success: true };
 }

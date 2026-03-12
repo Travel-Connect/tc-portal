@@ -60,7 +60,7 @@ export async function createTool(data: ToolFormData) {
     return { success: false, error: error.message };
   }
 
-  revalidatePath("/");
+  revalidatePath("/", "page");
   revalidatePath("/tools");
   revalidatePath("/admin/tools");
   return { success: true, id: newTool.id };
@@ -117,7 +117,7 @@ export async function updateTool(id: string, data: Partial<ToolFormData>) {
     return { success: false, error: error.message };
   }
 
-  revalidatePath("/");
+  revalidatePath("/", "page");
   revalidatePath("/tools");
   revalidatePath("/admin/tools");
   revalidatePath(`/tools/${id}`);
@@ -142,7 +142,7 @@ export async function archiveTool(id: string, archived: boolean) {
     return { success: false, error: error.message };
   }
 
-  revalidatePath("/");
+  revalidatePath("/", "page");
   revalidatePath("/tools");
   revalidatePath("/admin/tools");
   return { success: true };
@@ -168,7 +168,7 @@ export async function deleteTool(id: string) {
     return { success: false, error: error.message };
   }
 
-  revalidatePath("/");
+  revalidatePath("/", "page");
   revalidatePath("/tools");
   revalidatePath("/admin/tools");
   return { success: true };
@@ -234,7 +234,7 @@ export async function uploadToolIcon(toolId: string, file: File) {
     return { success: false, error: updateError.message };
   }
 
-  revalidatePath("/");
+  revalidatePath("/", "page");
   revalidatePath("/tools");
   revalidatePath("/admin/tools");
   revalidatePath(`/tools/${toolId}`);

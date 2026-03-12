@@ -36,7 +36,7 @@ export async function dismissAnnouncement(announcementId: string): Promise<{
     return { success: false, error: error.message };
   }
 
-  revalidatePath("/");
+  revalidatePath("/", "page");
   revalidatePath("/announcements");
   return { success: true };
 }
@@ -75,7 +75,7 @@ export async function createAnnouncement(data: AnnouncementFormData): Promise<{
     return { success: false, error: error.message };
   }
 
-  revalidatePath("/");
+  revalidatePath("/", "page");
   revalidatePath("/announcements");
   revalidatePath("/admin/announcements");
   return { success: true, id: announcement.id };
@@ -114,7 +114,7 @@ export async function updateAnnouncement(
     return { success: false, error: error.message };
   }
 
-  revalidatePath("/");
+  revalidatePath("/", "page");
   revalidatePath("/announcements");
   revalidatePath("/admin/announcements");
   return { success: true };
@@ -148,7 +148,7 @@ export async function publishAnnouncement(id: string): Promise<{
     return { success: false, error: error.message };
   }
 
-  revalidatePath("/");
+  revalidatePath("/", "page");
   revalidatePath("/announcements");
   revalidatePath("/admin/announcements");
   return { success: true };
@@ -182,7 +182,7 @@ export async function unpublishAnnouncement(id: string): Promise<{
     return { success: false, error: error.message };
   }
 
-  revalidatePath("/");
+  revalidatePath("/", "page");
   revalidatePath("/announcements");
   revalidatePath("/admin/announcements");
   return { success: true };
@@ -212,7 +212,7 @@ export async function deleteAnnouncement(id: string): Promise<{
     return { success: false, error: error.message };
   }
 
-  revalidatePath("/");
+  revalidatePath("/", "page");
   revalidatePath("/announcements");
   revalidatePath("/admin/announcements");
   return { success: true };

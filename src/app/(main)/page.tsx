@@ -42,7 +42,7 @@ export default async function HomePage() {
   // Fetch all data in parallel
   const [categories, allTools, pinnedTools, prefsResult] = await measure("home.parallelQueries", () => Promise.all([
     getCategories(),
-    getToolsWithUserOrder(),
+    getToolsWithUserOrder(user?.id),
     user ? getPinnedTools(user.id) : Promise.resolve([]),
     user ? getUserToolPreferences() : Promise.resolve({ success: true, preferences: {} }),
   ]), ctx);

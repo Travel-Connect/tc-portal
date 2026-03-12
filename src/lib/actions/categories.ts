@@ -28,7 +28,7 @@ export async function createCategory(data: CategoryFormData) {
     return { success: false, error: error.message };
   }
 
-  revalidatePath("/");
+  revalidatePath("/", "page");
   revalidatePath("/tools");
   revalidatePath("/admin/categories");
   return { success: true };
@@ -55,7 +55,7 @@ export async function updateCategory(id: string, data: CategoryFormData) {
     return { success: false, error: error.message };
   }
 
-  revalidatePath("/");
+  revalidatePath("/", "page");
   revalidatePath("/tools");
   revalidatePath("/admin/categories");
   return { success: true };
@@ -92,7 +92,7 @@ export async function deleteCategory(id: string) {
     return { success: false, error: error.message };
   }
 
-  revalidatePath("/");
+  revalidatePath("/", "page");
   revalidatePath("/tools");
   revalidatePath("/admin/categories");
   return { success: true };

@@ -67,47 +67,47 @@ export async function searchTools(query: string): Promise<ToolWithCategory[]> {
   return data || [];
 }
 
-// ツールをユーザー設定の並び順で取得
-export async function getToolsWithUserOrder(): Promise<ToolWithCategory[]> {
+// ツールをユーザー設定の並び順で取得（userId引数版：getUser()不要で高速）
+export async function getToolsWithUserOrder(userId?: string | null): Promise<ToolWithCategory[]> {
   const supabase = await createClient();
 
-  // ユーザー取得
-  const { data: { user } } = await supabase.auth.getUser();
+  // ツール取得と並び順取得を並列実行
+  const [toolsResult, ordersResult] = await Promise.all([
+    supabase
+      .from("tools")
+      .select(`
+        *,
+        categories (*)
+      `)
+      .eq("is_archived", false)
+      .is("deleted_at", null),
+    userId
+      ? supabase
+          .from("tool_orders")
+          .select("tool_id, sort_index")
+          .eq("user_id", userId)
+      : Promise.resolve({ data: null }),
+  ]);
 
-  // ツール取得
-  const { data: tools, error: toolsError } = await supabase
-    .from("tools")
-    .select(`
-      *,
-      categories (*)
-    `)
-    .eq("is_archived", false)
-    .is("deleted_at", null);
-
-  if (toolsError) {
-    console.error("Error fetching tools:", toolsError);
+  if (toolsResult.error) {
+    console.error("Error fetching tools:", toolsResult.error);
     return [];
   }
 
+  const tools = toolsResult.data;
   if (!tools || tools.length === 0) {
     return [];
   }
 
   // ユーザーがログインしていない場合はname順
-  if (!user) {
+  if (!userId) {
     return tools.sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  // ユーザーの並び順を取得
-  const { data: orders } = await supabase
-    .from("tool_orders")
-    .select("tool_id, sort_index")
-    .eq("user_id", user.id);
-
   // 並び順マップを作成
   const orderMap = new Map<string, number>();
-  if (orders) {
-    orders.forEach((order) => {
+  if (ordersResult.data) {
+    ordersResult.data.forEach((order: { tool_id: string; sort_index: number }) => {
       orderMap.set(order.tool_id, order.sort_index);
     });
   }

@@ -48,7 +48,7 @@ export async function saveToolOrders(orders: ToolOrderInput[]) {
   console.log("Tool orders saved successfully");
 
   revalidatePath("/tools");
-  revalidatePath("/");
+  revalidatePath("/", "page");
 
   return { success: true };
 }
@@ -73,7 +73,7 @@ export async function resetToolOrders() {
   }
 
   revalidatePath("/tools");
-  revalidatePath("/");
+  revalidatePath("/", "page");
 
   return { success: true };
 }

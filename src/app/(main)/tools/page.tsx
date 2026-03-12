@@ -20,7 +20,7 @@ export default async function ToolsPage({ searchParams }: ToolsPageProps) {
   // Fetch all data in parallel
   const [categories, tools, pinnedIds] = await measure("tools.parallelQueries", () => Promise.all([
     getCategories(),
-    getToolsWithUserOrder(),
+    getToolsWithUserOrder(user?.id),
     user ? getPinnedToolIds(user.id) : Promise.resolve([]),
   ]), ctx);
 
