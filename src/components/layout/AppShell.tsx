@@ -9,13 +9,14 @@ interface AppShellProps {
   isAdmin?: boolean;
   failedTaskCount?: number;
   unreadMessageCount?: number;
+  undismissedAnnouncementCount?: number;
 }
 
-export function AppShell({ children, userEmail, isAdmin, failedTaskCount, unreadMessageCount = 0 }: AppShellProps) {
+export function AppShell({ children, userEmail, isAdmin, failedTaskCount, unreadMessageCount = 0, undismissedAnnouncementCount = 0 }: AppShellProps) {
   return (
     <UnreadCountProvider initialCount={unreadMessageCount}>
       <div className="flex min-h-screen bg-background">
-        <Sidebar isAdmin={isAdmin} failedTaskCount={failedTaskCount} />
+        <Sidebar isAdmin={isAdmin} failedTaskCount={failedTaskCount} undismissedAnnouncementCount={undismissedAnnouncementCount} />
         <div className="flex-1 flex flex-col">
           <Header userEmail={userEmail} />
           <main className="flex-1 p-6">{children}</main>

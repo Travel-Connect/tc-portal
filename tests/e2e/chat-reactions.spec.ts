@@ -74,12 +74,9 @@ test.describe("Chat Bubble UI and Reactions", () => {
     await fillTiptapEditor(replyEditor, replyMessage);
     await submitTiptapEditor(replyEditor);
 
-    // 返信が表示されるのを待つ
-    await expect(page.getByText(replyMessage)).toBeVisible({ timeout: 10000 });
-
-    // 吹き出しが存在する
+    // 返信がmessage-itemとして表示されるのを待つ
     const replyBubble = page.getByTestId("message-item").filter({ hasText: replyMessage });
-    await expect(replyBubble).toBeVisible();
+    await expect(replyBubble).toBeVisible({ timeout: 10000 });
 
     // bg-primary クラスが適用されている（青背景）
     const primaryBubble = replyBubble.locator(".bg-primary").first();

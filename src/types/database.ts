@@ -245,6 +245,7 @@ export interface Announcement {
   status: AnnouncementStatus;
   published_at: string | null;
   created_by: string | null;
+  external_ref: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -1,16 +1,20 @@
 import { Bell } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { getCachedUser } from "@/lib/auth/get-current-user";
 import { getPublishedAnnouncements, getDismissedAnnouncementIds } from "@/lib/queries/announcements";
 import { AnnouncementList } from "@/components/announcements";
+import { createPerfContext, measure, logPerfSummary } from "@/lib/perf/measure";
 
 export default async function AnnouncementsPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const ctx = createPerfContext();
 
-  const [announcements, dismissedIds] = await Promise.all([
+  const user = await measure("announcements.getCachedUser", () => getCachedUser(), ctx);
+
+  const [announcements, dismissedIds] = await measure("announcements.parallelQueries", () => Promise.all([
     getPublishedAnnouncements(),
     user ? getDismissedAnnouncementIds(user.id) : Promise.resolve([]),
-  ]);
+  ]), ctx);
+
+  logPerfSummary(ctx);
 
   return (
     <div className="space-y-6">

@@ -27,7 +27,7 @@ const navItems: NavItem[] = [
   { href: "/tools", label: "ツール", icon: <Wrench className="w-5 h-5" /> },
   { href: "/messages", label: "メッセージ", icon: <MessageSquare className="w-5 h-5" />, badgeKey: "unreadMessages" },
   { href: "/runs", label: "実行履歴", icon: <History className="w-5 h-5" /> },
-  { href: "/announcements", label: "お知らせ", icon: <Bell className="w-5 h-5" /> },
+  { href: "/announcements", label: "お知らせ", icon: <Bell className="w-5 h-5" />, badgeKey: "undismissedAnnouncements" },
   { href: "/incidents", label: "障害", icon: <AlertTriangle className="w-5 h-5" />, badgeKey: "jobError" },
   { href: "/admin", label: "管理", icon: <Settings className="w-5 h-5" /> },
 ];
@@ -35,9 +35,10 @@ const navItems: NavItem[] = [
 interface SidebarProps {
   isAdmin?: boolean;
   failedTaskCount?: number;
+  undismissedAnnouncementCount?: number;
 }
 
-export function Sidebar({ isAdmin = false, failedTaskCount = 0 }: SidebarProps) {
+export function Sidebar({ isAdmin = false, failedTaskCount = 0, undismissedAnnouncementCount = 0 }: SidebarProps) {
   const pathname = usePathname();
   const { count: unreadMessageCount } = useUnreadCount();
 
@@ -48,7 +49,15 @@ export function Sidebar({ isAdmin = false, failedTaskCount = 0 }: SidebarProps) 
   const getBadgeCount = (badgeKey?: string): number => {
     if (badgeKey === "jobError") return failedTaskCount;
     if (badgeKey === "unreadMessages") return unreadMessageCount;
+    if (badgeKey === "undismissedAnnouncements") return undismissedAnnouncementCount;
     return 0;
+  };
+
+  const getBadgeColor = (badgeKey?: string): { dot: string; bg: string } => {
+    if (badgeKey === "undismissedAnnouncements") {
+      return { dot: "bg-yellow-500", bg: "bg-yellow-500 text-white" };
+    }
+    return { dot: "bg-destructive", bg: "bg-destructive text-destructive-foreground" };
   };
 
   return (
@@ -66,6 +75,7 @@ export function Sidebar({ isAdmin = false, failedTaskCount = 0 }: SidebarProps) 
                 ? pathname === "/"
                 : pathname.startsWith(item.href);
             const badgeCount = getBadgeCount(item.badgeKey);
+            const badgeColor = getBadgeColor(item.badgeKey);
 
             return (
               <li key={item.href}>
@@ -84,10 +94,10 @@ export function Sidebar({ isAdmin = false, failedTaskCount = 0 }: SidebarProps) 
                     badgeCount > 0 ? (
                       <span className="flex items-center gap-1.5">
                         <span className="relative flex h-2.5 w-2.5">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
-                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" />
+                          <span className={cn("animate-ping absolute inline-flex h-full w-full rounded-full opacity-75", badgeColor.dot)} />
+                          <span className={cn("relative inline-flex rounded-full h-2.5 w-2.5", badgeColor.dot)} />
                         </span>
-                        <span className="px-1.5 py-0.5 text-xs font-semibold bg-destructive text-destructive-foreground rounded-full">
+                        <span className={cn("px-1.5 py-0.5 text-xs font-semibold rounded-full", badgeColor.bg)}>
                           {badgeCount}
                         </span>
                       </span>

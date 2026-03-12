@@ -1,13 +1,18 @@
 import { Suspense } from "react";
 import { MessagesLayout } from "@/components/chat/MessagesLayout";
 import { getChannels } from "@/lib/queries/chat";
+import { createPerfContext, measure, logPerfSummary } from "@/lib/perf/measure";
 
 export const metadata = {
   title: "メッセージ | TC Portal",
 };
 
 export default async function MessagesPage() {
-  const channels = await getChannels();
+  const ctx = createPerfContext();
+
+  const channels = await measure("messages.getChannels", () => getChannels(), ctx);
+
+  logPerfSummary(ctx);
 
   return (
     <div className="h-[calc(100vh-theme(spacing.20))] -m-6">

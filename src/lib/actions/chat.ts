@@ -558,6 +558,28 @@ export async function getAllTags(): Promise<ChatTag[]> {
  * ユーザーの未読スレッド数を取得
  * RPC関数を使用して、返信追加時も正確に未読判定する
  */
+/**
+ * 未読スレッド数を取得（userId を引数で受け取るバージョン）
+ * auth.getUser() の重複呼び出しを防ぐ
+ */
+export async function getUnreadCountByUserId(userId: string): Promise<number> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.rpc("get_total_unread_thread_count", {
+    p_user_id: userId,
+  });
+
+  if (error) {
+    console.error("Error getting unread count:", error);
+    return 0;
+  }
+
+  return data || 0;
+}
+
+/**
+ * 未読スレッド数を取得（既存互換 — 内部で auth.getUser() を呼ぶ）
+ */
 export async function getUnreadCount(): Promise<number> {
   const supabase = await createClient();
 
@@ -568,17 +590,7 @@ export async function getUnreadCount(): Promise<number> {
     return 0;
   }
 
-  // RPC関数で未読スレッド数を取得
-  const { data, error } = await supabase.rpc("get_total_unread_thread_count", {
-    p_user_id: user.id,
-  });
-
-  if (error) {
-    console.error("Error getting unread count:", error);
-    return 0;
-  }
-
-  return data || 0;
+  return getUnreadCountByUserId(user.id);
 }
 
 // ========== 添付ファイル操作 ==========

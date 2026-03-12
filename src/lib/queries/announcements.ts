@@ -88,6 +88,27 @@ export async function getDismissedAnnouncementIds(
 }
 
 /**
+ * 未読（未非表示）のお知らせ件数を取得（サイドバーバッジ用）
+ * RPC関数を使用して 2クエリ → 1クエリ に統合
+ */
+export async function getUndismissedAnnouncementCount(
+  userId: string
+): Promise<number> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.rpc("get_undismissed_announcement_count", {
+    p_user_id: userId,
+  });
+
+  if (error) {
+    console.error("Error counting undismissed announcements:", error);
+    return 0;
+  }
+
+  return data || 0;
+}
+
+/**
  * 全お知らせを取得（管理画面用、draft含む）
  */
 export async function getAllAnnouncements(): Promise<Announcement[]> {

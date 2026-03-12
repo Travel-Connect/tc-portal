@@ -3,11 +3,12 @@ import { Grid3X3 } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { AllToolsSection, PinnedToolsSection } from "@/components/tools";
 import { HomeAnnouncementsBanner } from "@/components/announcements";
-import { createClient } from "@/lib/supabase/server";
+import { getCachedUser } from "@/lib/auth/get-current-user";
 import { getCategories } from "@/lib/queries/categories";
 import { getToolsWithUserOrder } from "@/lib/queries/tools";
 import { getPinnedTools } from "@/lib/queries/pins";
 import { getUserToolPreferences } from "@/lib/actions/tool-preferences";
+import { createPerfContext, measure, logPerfSummary } from "@/lib/perf/measure";
 import type { Tool, Category, ToolUserPreference } from "@/types/database";
 
 // セクションヘッダー
@@ -34,16 +35,19 @@ function CategoryCard({ category }: { category: Category }) {
 }
 
 export default async function HomePage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const ctx = createPerfContext();
+
+  const user = await measure("home.getCachedUser", () => getCachedUser(), ctx);
 
   // Fetch all data in parallel
-  const [categories, allTools, pinnedTools, prefsResult] = await Promise.all([
+  const [categories, allTools, pinnedTools, prefsResult] = await measure("home.parallelQueries", () => Promise.all([
     getCategories(),
     getToolsWithUserOrder(),
     user ? getPinnedTools(user.id) : Promise.resolve([]),
     user ? getUserToolPreferences() : Promise.resolve({ success: true, preferences: {} }),
-  ]);
+  ]), ctx);
+
+  logPerfSummary(ctx);
 
   // Convert to Tool[] (remove categories relation)
   const toolsForSection = allTools.map((t) => ({ ...t, categories: undefined } as Tool));
