@@ -5,6 +5,28 @@ export interface ToolWithCategory extends Tool {
   categories: Category | null;
 }
 
+// 個別ツールをIDで取得
+export async function getToolById(id: string): Promise<ToolWithCategory | null> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("tools")
+    .select(`
+      *,
+      categories (*)
+    `)
+    .eq("id", id)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Error fetching tool:", error);
+    return null;
+  }
+
+  return data;
+}
+
 export async function getTools(): Promise<ToolWithCategory[]> {
   const supabase = await createClient();
 

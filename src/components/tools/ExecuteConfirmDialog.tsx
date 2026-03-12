@@ -33,7 +33,7 @@ const AUTO_VALUE = "auto";
 
 interface ExecuteConfirmDialogProps {
   tool: Tool;
-  children: React.ReactNode;
+  children?: React.ReactNode;
   // 制御モード用（親から状態を管理する場合）
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -197,9 +197,11 @@ export function ExecuteConfirmDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {children}
-      </DialogTrigger>
+      {children && (
+        <DialogTrigger asChild>
+          {children}
+        </DialogTrigger>
+      )}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>実行確認</DialogTitle>
