@@ -14,8 +14,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
  *   external_ref: string - 重複防止用の外部参照キー（必須）
  *
  * Behavior:
- *   - external_ref が既存の場合: title/body を更新し published 状態を維持
- *   - external_ref が新規の場合: 新しいお知らせを published で作成
+ *   - external_ref のプレフィックス（日付部分を除いた部分）で既存を検索
+ *   - 同じプレフィックスの既存がある場合: title/body/external_ref を更新（上書き）
+ *   - 既存がない場合: 新しいお知らせを published で作成
+ *   - これにより 1施設×1カテゴリにつき常に最新の1件だけが残る
  */
 export async function POST(request: NextRequest) {
   const webhookKey = request.headers.get("X-Webhook-Key");
@@ -45,20 +47,29 @@ export async function POST(request: NextRequest) {
     const supabase = createAdminClient();
     const now = new Date().toISOString();
 
-    // external_ref で既存のお知らせを検索
+    // external_ref からプレフィックスを抽出（日付部分を除去）
+    // 例: "neppan-pw:d354af6e-...:2026-03-12" → "neppan-pw:d354af6e-..."
+    const refParts = external_ref.split(":");
+    const refPrefix =
+      refParts.length >= 3
+        ? refParts.slice(0, -1).join(":") // 最後の日付部分を除去
+        : external_ref;
+
+    // 同じプレフィックスを持つ既存のお知らせを検索
     const { data: existing } = await supabase
       .from("announcements")
       .select("id")
-      .eq("external_ref", external_ref)
+      .like("external_ref", `${refPrefix}%`)
       .maybeSingle();
 
     if (existing) {
-      // 既存を更新（内容が変わった場合）
+      // 既存を上書き（title/body/external_ref/日時を更新）
       const { error } = await supabase
         .from("announcements")
         .update({
           title,
           body,
+          external_ref,
           updated_at: now,
         })
         .eq("id", existing.id);
